@@ -694,6 +694,13 @@ export default function App() {
     }
 
     async function syncLiveMatch() {
+      const liveHomeEvents = currentMatch.events.filter((e) => e.teamKey === 'home')
+      const liveAwayEvents = currentMatch.events.filter((e) => e.teamKey === 'away')
+      const liveScore = {
+        home: getTeamTotals(currentMatch.home.players, liveHomeEvents).points,
+        away: getTeamTotals(currentMatch.away.players, liveAwayEvents).points,
+      }
+
       const { error: matchError } = await supabase
         .from('matches')
         .update({
@@ -704,6 +711,9 @@ export default function App() {
           venue: currentMatch.venue || '',
           quarter: currentMatch.quarter,
           status: 'live',
+          final_score_home: liveScore.home,
+          final_score_away: liveScore.away,
+          quarter_scores: getAllQuarterScores(currentMatch.events),
           home_players: currentMatch.home.players,
           away_players: currentMatch.away.players,
           home_on_court: currentMatch.home.onCourt,
@@ -1831,10 +1841,33 @@ export default function App() {
     <div className="app">
       {screen === 'home' && (
         <div className="page home-page">
-          <div className="hero-card">
+          <div className="home-top-grid">
+            <div className="hero-card">
             <div className="hero-icon">🏀</div>
             <h1>Basketball Ops for the Titans.</h1>
             <p>Track your roster, run live games courtside, and keep every result looking professional.</p>
+            </div>
+
+            <div className="info-card home-roster-card">
+              <div className="info-title">Current Home Team</div>
+              <div className="info-main">{homeTeam.name}</div>
+              <div className="info-sub">{homeTeam.players.length} players saved</div>
+
+              <div className="home-roster-preview">
+                {previewPlayers.map((player) => (
+                  <div key={player.id} className="home-player-pill">
+                    <span>#{player.number}</span>
+                    <strong>{getDisplayName(player)}</strong>
+                  </div>
+                ))}
+                {extraPlayersCount > 0 && (
+                  <div className="home-player-pill more">
+                    <span>+</span>
+                    <strong>{extraPlayersCount} more</strong>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           {currentMatch && liveMatches.length === 0 && (
@@ -1920,11 +1953,6 @@ export default function App() {
             </button>
           </div>
 
-          <div className="info-card">
-            <div className="info-title">Current Home Team</div>
-            <div className="info-main">{homeTeam.name}</div>
-            <div className="info-sub">{homeTeam.players.length} players saved</div>
-          </div>
         </div>
       )}
 
