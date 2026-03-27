@@ -1,0 +1,24 @@
+{
+  "name": "Titans Basketball Ops",
+  "short_name": "Titans Ops",
+  "description": "Shared basketball roster management, live stat tracking, and match reports for the Titans.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#08131b",
+  "theme_color": "#08131b",
+  "orientation": "landscape",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
