@@ -1513,9 +1513,9 @@ button {
   position: relative;
   z-index: 6;
   display: grid;
-  grid-template-columns: minmax(360px, 1.3fr) minmax(300px, 0.9fr);
+  grid-template-columns: minmax(300px, 0.85fr) minmax(360px, 1.15fr);
   gap: 14px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .selected-main-card {
@@ -1523,6 +1523,8 @@ button {
   padding: 18px;
   min-height: 0;
   border: 1px solid rgba(147, 197, 253, 0.14);
+  align-self: start;
+  max-width: 430px;
 }
 
 .selected-team-badge {
@@ -1782,8 +1784,23 @@ button {
   overflow: hidden;
 }
 
+.selected-jersey-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--jersey-secondary);
+  -webkit-mask-image: var(--jersey-mask);
+  mask-image: var(--jersey-mask);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  transform: scale(1.04);
+}
+
 .selected-jersey-fill,
-.selected-jersey-fill::before,
 .selected-jersey-fill::after {
   position: absolute;
   inset: 0;
@@ -1798,24 +1815,10 @@ button {
 }
 
 .selected-jersey-fill {
+  inset: 3px;
   background: var(--jersey-primary);
   filter: drop-shadow(0 10px 12px rgba(0, 0, 0, 0.24));
-}
-
-.selected-jersey-fill::before {
-  content: '';
-  background:
-    linear-gradient(var(--jersey-secondary), var(--jersey-secondary));
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  -webkit-mask-size: contain, calc(100% - 8px) calc(100% - 8px);
-  mask-size: contain, calc(100% - 8px) calc(100% - 8px);
-  -webkit-mask-position: center, center;
-  mask-position: center, center;
-  -webkit-mask-repeat: no-repeat, no-repeat;
-  mask-repeat: no-repeat, no-repeat;
-  -webkit-mask-image: var(--jersey-mask), var(--jersey-mask);
-  mask-image: var(--jersey-mask), var(--jersey-mask);
+  z-index: 1;
 }
 
 .selected-jersey-fill::after {
@@ -1827,6 +1830,7 @@ button {
       transparent 30%
     );
   opacity: 0.55;
+  z-index: 2;
 }
 
 .selected-jersey-name-overlay {
@@ -1844,6 +1848,7 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  z-index: 3;
 }
 
 .selected-jersey-number-overlay {
@@ -1859,6 +1864,7 @@ button {
     0 0 2px rgba(0, 0, 0, 0.45),
     1px 1px 0 rgba(0, 0, 0, 0.35),
     -1px -1px 0 rgba(0, 0, 0, 0.35);
+  z-index: 3;
 }
 
 .selected-lower-row {
@@ -1907,8 +1913,7 @@ button {
   grid-template-rows: repeat(2, minmax(0, 1fr));
   gap: 10px;
   align-items: stretch;
-  align-self: start;
-  min-height: 0;
+  min-height: 100%;
 }
 
 .dock-action {
@@ -1939,6 +1944,19 @@ button {
   opacity: 0.45;
   cursor: not-allowed;
   box-shadow: none;
+}
+
+.side-player,
+.side-player *,
+.dock-action,
+.dock-action *,
+.selected-team-badge,
+.selected-stat-grid span,
+.score-team-name,
+.score-big {
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.8),
+    0 0 2px rgba(0, 0, 0, 0.65);
 }
 
 .dock-action:active {
