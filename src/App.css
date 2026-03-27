@@ -226,7 +226,6 @@ button {
 .modal-subtext,
 .log-empty,
 .score-sub,
-.selected-stat-line,
 .history-sub,
 .selected-player-subline {
   color: var(--muted);
@@ -337,10 +336,6 @@ button {
   gap: 12px;
 }
 
-.team-color-picker-row {
-  margin-top: 12px;
-}
-
 .team-color-input {
   width: 100%;
   height: 54px;
@@ -348,6 +343,10 @@ button {
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.08);
   padding: 8px;
+}
+
+.team-colors-grid {
+  margin-top: 12px;
 }
 
 .triple-row {
@@ -1752,12 +1751,48 @@ button {
   overflow: hidden;
 }
 
-.selected-jersey-card img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: block;
-  transform: scale(1.05);
+.selected-jersey-fill,
+.selected-jersey-fill::before,
+.selected-jersey-fill::after {
+  position: absolute;
+  inset: 0;
+  -webkit-mask-image: var(--jersey-mask);
+  mask-image: var(--jersey-mask);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+.selected-jersey-fill {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), transparent 28%),
+    var(--jersey-primary);
+  filter: drop-shadow(0 10px 12px rgba(0, 0, 0, 0.24));
+}
+
+.selected-jersey-fill::before {
+  content: '';
+  background:
+    linear-gradient(
+      180deg,
+      var(--jersey-secondary) 0 24%,
+      transparent 24% 100%
+    );
+}
+
+.selected-jersey-fill::after {
+  content: '';
+  background:
+    linear-gradient(
+      135deg,
+      transparent 0 18%,
+      color-mix(in srgb, var(--jersey-secondary) 78%, white) 18% 28%,
+      transparent 28% 100%
+    );
+  opacity: 0.65;
 }
 
 .selected-jersey-name-overlay {

@@ -16,7 +16,9 @@ const STORAGE_KEYS = {
 }
 
 const HOME_TEAM_COLOR = '#2f6df6'
+const HOME_TEAM_SECONDARY_COLOR = '#93c5fd'
 const DEFAULT_AWAY_COLOR = '#ef4444'
+const DEFAULT_AWAY_SECONDARY_COLOR = '#fca5a5'
 
 function createPlayer(name, number) {
   return {
@@ -409,7 +411,11 @@ function getStatsForTeamPlayer(match, teamKey, playerId) {
 
 function mapSupabaseMatchRow(row, events = []) {
   const homeColor = row.home_players?.[0]?.teamColor || HOME_TEAM_COLOR
+  const homeSecondaryColor =
+    row.home_players?.[0]?.teamSecondaryColor || HOME_TEAM_SECONDARY_COLOR
   const awayColor = row.away_players?.[0]?.teamColor || DEFAULT_AWAY_COLOR
+  const awaySecondaryColor =
+    row.away_players?.[0]?.teamSecondaryColor || DEFAULT_AWAY_SECONDARY_COLOR
 
   return {
     id: row.id,
@@ -430,12 +436,14 @@ function mapSupabaseMatchRow(row, events = []) {
     home: {
       name: row.home_team_name,
       color: homeColor,
+      secondaryColor: homeSecondaryColor,
       players: row.home_players || [],
       onCourt: row.home_on_court || [],
     },
     away: {
       name: row.away_team_name,
       color: awayColor,
+      secondaryColor: awaySecondaryColor,
       players: row.away_players || [],
       onCourt: row.away_on_court || [],
     },
@@ -454,6 +462,8 @@ export default function App() {
 
   const [homeTeam, setHomeTeam] = useState({
     name: 'Loading team...',
+    color: HOME_TEAM_COLOR,
+    secondaryColor: HOME_TEAM_SECONDARY_COLOR,
     players: [],
   })
   const [homeTeamId, setHomeTeamId] = useState(null)
@@ -479,6 +489,7 @@ export default function App() {
     date: getTodayDateString(),
     venue: '',
     opponentColor: DEFAULT_AWAY_COLOR,
+    opponentSecondaryColor: DEFAULT_AWAY_SECONDARY_COLOR,
   })
 
   const [startingFive, setStartingFive] = useState({
@@ -554,7 +565,7 @@ export default function App() {
   async function loadHomeTeamFromSupabase() {
     const { data: teamRows, error: teamError } = await supabase
       .from('teams')
-      .select('id, name, created_at')
+      .select('*')
       .order('created_at', { ascending: false })
       .limit(1)
 
@@ -584,6 +595,8 @@ export default function App() {
     setHomeTeamId(teamRow.id)
     setHomeTeam({
       name: teamRow.name,
+      color: teamRow.primary_color || HOME_TEAM_COLOR,
+      secondaryColor: teamRow.secondary_color || HOME_TEAM_SECONDARY_COLOR,
       players: playerRows || [],
     })
 
@@ -950,6 +963,7 @@ export default function App() {
       date: getTodayDateString(),
       venue: '',
       opponentColor: DEFAULT_AWAY_COLOR,
+      opponentSecondaryColor: DEFAULT_AWAY_SECONDARY_COLOR,
     })
     setStartingFive({ home: [], away: [] })
   }
@@ -1115,11 +1129,14 @@ export default function App() {
 
     const homePlayersForMatch = homeTeam.players.map((player) => ({
       ...player,
-      teamColor: HOME_TEAM_COLOR,
+      teamColor: homeTeam.color || HOME_TEAM_COLOR,
+      teamSecondaryColor: homeTeam.secondaryColor || HOME_TEAM_SECONDARY_COLOR,
     }))
     const awayPlayersForMatch = newMatch.opponentPlayers.map((player) => ({
       ...player,
       teamColor: newMatch.opponentColor || DEFAULT_AWAY_COLOR,
+      teamSecondaryColor:
+        newMatch.opponentSecondaryColor || DEFAULT_AWAY_SECONDARY_COLOR,
     }))
 
     const match = {
@@ -1129,13 +1146,16 @@ export default function App() {
       quarter: 1,
       home: {
         name: homeTeam.name.trim() || 'Home Team',
-        color: HOME_TEAM_COLOR,
+        color: homeTeam.color || HOME_TEAM_COLOR,
+        secondaryColor: homeTeam.secondaryColor || HOME_TEAM_SECONDARY_COLOR,
         players: homePlayersForMatch,
         onCourt: [...startingFive.home],
       },
       away: {
         name: newMatch.opponentName.trim() || 'Opponent',
         color: newMatch.opponentColor || DEFAULT_AWAY_COLOR,
+        secondaryColor:
+          newMatch.opponentSecondaryColor || DEFAULT_AWAY_SECONDARY_COLOR,
         players: awayPlayersForMatch,
         onCourt: [...startingFive.away],
       },
@@ -1945,6 +1965,13 @@ export default function App() {
       currentMatch[selectedTeam]?.players?.[0]?.teamColor ||
       (selectedTeam === 'home' ? HOME_TEAM_COLOR : DEFAULT_AWAY_COLOR)
     : HOME_TEAM_COLOR
+  const selectedTeamSecondaryColor = currentMatch
+    ? currentMatch[selectedTeam]?.secondaryColor ||
+      currentMatch[selectedTeam]?.players?.[0]?.teamSecondaryColor ||
+      (selectedTeam === 'home'
+        ? HOME_TEAM_SECONDARY_COLOR
+        : DEFAULT_AWAY_SECONDARY_COLOR)
+    : HOME_TEAM_SECONDARY_COLOR
 
   return (
     <div className="app">
@@ -2106,6 +2133,64 @@ export default function App() {
               }}
               placeholder="Enter home team name"
             />
+
+            <div className="grid-two team-colors-grid">
+              <div>
+                <label className="field-label">Primary Colour</label>
+                <input
+                  className="team-color-input"
+                  type="color"
+                  value={homeTeam.color}
+                  onChange={async (e) => {
+                    const nextColor = e.target.value
+
+                    setHomeTeam((prev) => ({
+                      ...prev,
+                      color: nextColor,
+                    }))
+
+                    if (!homeTeamId) return
+
+                    const { error } = await supabase
+                      .from('teams')
+                      .update({ primary_color: nextColor })
+                      .eq('id', homeTeamId)
+
+                    if (error) {
+                      console.error('Failed to update home primary colour:', error)
+                    }
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="field-label">Secondary Colour</label>
+                <input
+                  className="team-color-input"
+                  type="color"
+                  value={homeTeam.secondaryColor}
+                  onChange={async (e) => {
+                    const nextColor = e.target.value
+
+                    setHomeTeam((prev) => ({
+                      ...prev,
+                      secondaryColor: nextColor,
+                    }))
+
+                    if (!homeTeamId) return
+
+                    const { error } = await supabase
+                      .from('teams')
+                      .update({ secondary_color: nextColor })
+                      .eq('id', homeTeamId)
+
+                    if (error) {
+                      console.error('Failed to update home secondary colour:', error)
+                    }
+                  }}
+                />
+              </div>
+            </div>
           </div>
 
           <div className="card">
@@ -2210,7 +2295,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="team-color-picker-row">
+            <div className="grid-two team-colors-grid">
               <div>
                 <label className="field-label">Opponent Team Colour</label>
                 <input
@@ -2221,6 +2306,21 @@ export default function App() {
                     setNewMatch((prev) => ({
                       ...prev,
                       opponentColor: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+
+              <div>
+                <label className="field-label">Opponent Secondary Colour</label>
+                <input
+                  className="team-color-input"
+                  type="color"
+                  value={newMatch.opponentSecondaryColor}
+                  onChange={(e) =>
+                    setNewMatch((prev) => ({
+                      ...prev,
+                      opponentSecondaryColor: e.target.value,
                     }))
                   }
                 />
@@ -2332,6 +2432,7 @@ export default function App() {
             currentMatch={currentMatch}
             selectedTeam={selectedTeam}
             selectedTeamColor={selectedTeamColor}
+            selectedTeamSecondaryColor={selectedTeamSecondaryColor}
             selectedPlayer={selectedPlayer}
             selectedStats={selectedStats}
             titansJerseyBack={titansJerseyBack}

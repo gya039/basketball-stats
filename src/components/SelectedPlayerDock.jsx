@@ -2,6 +2,7 @@ export default function SelectedPlayerDock({
   currentMatch,
   selectedTeam,
   selectedTeamColor,
+  selectedTeamSecondaryColor,
   selectedPlayer,
   selectedStats,
   titansJerseyBack,
@@ -31,8 +32,15 @@ export default function SelectedPlayerDock({
 
         <div className="selected-player-header">
           {selectedPlayer && (
-            <div className="selected-jersey-card">
-              <img src={titansJerseyBack} alt="Titans jersey back" />
+            <div
+              className="selected-jersey-card"
+              style={{
+                '--jersey-mask': `url(${titansJerseyBack})`,
+                '--jersey-primary': selectedTeamColor,
+                '--jersey-secondary': selectedTeamSecondaryColor,
+              }}
+            >
+              <div className="selected-jersey-fill" aria-hidden="true" />
               <div className="selected-jersey-name-overlay">
                 {selectedPlayer.name.toUpperCase()}
               </div>
