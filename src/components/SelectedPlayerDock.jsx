@@ -38,22 +38,22 @@ export default function SelectedPlayerDock({
             </div>
 
             {selectedPlayer && (
-              <div className="selected-player-subline">
-                #{selectedPlayer.number} ·{' '}
-                {selectedTeam === 'home' ? currentMatch.home.name : currentMatch.away.name}
-              </div>
+              <>
+                <div className="selected-player-subline">
+                  #{selectedPlayer.number} -{' '}
+                  {selectedTeam === 'home' ? currentMatch.home.name : currentMatch.away.name}
+                </div>
+
+                <div className="selected-stat-line">
+                  <span>{selectedStats.pts} PTS</span>
+                  <span>{selectedStats.reb} REB</span>
+                  <span>{selectedStats.ast} AST</span>
+                  <span>{selectedStats.foul} PF</span>
+                </div>
+              </>
             )}
           </div>
         </div>
-
-        {selectedPlayer && (
-          <div className="selected-stat-line">
-            <span>{selectedStats.pts} PTS</span>
-            <span>{selectedStats.reb} REB</span>
-            <span>{selectedStats.ast} AST</span>
-            <span>{selectedStats.foul} PF</span>
-          </div>
-        )}
 
         <div className="selected-tools-row">
           <button

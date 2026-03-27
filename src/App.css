@@ -1255,7 +1255,7 @@ button {
 .side-team-column {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: space-between;
   gap: 12px;
 }
 
@@ -1481,7 +1481,7 @@ button {
 .selected-main-card {
   background: linear-gradient(135deg, rgba(9, 16, 25, 0.97), rgba(14, 24, 36, 0.93));
   padding: 18px;
-  min-height: 154px;
+  min-height: 132px;
   border: 1px solid rgba(147, 197, 253, 0.14);
 }
 
@@ -1555,11 +1555,11 @@ button {
   }
 
   .side-team-column {
-    gap: 8px;
+    gap: 6px;
   }
 
   .side-player {
-    min-height: 58px;
+    min-height: 54px;
     padding: 6px 5px;
     border-radius: 14px;
   }
@@ -1600,7 +1600,7 @@ button {
   }
 
   .selected-main-card {
-    min-height: 132px;
+    min-height: 116px;
     padding: 14px;
   }
 
@@ -1625,7 +1625,6 @@ button {
 
   .selected-stat-line {
     gap: 8px;
-    margin-bottom: 10px;
   }
 
   .selected-stat-line span {
@@ -1638,7 +1637,7 @@ button {
   }
 
   .dock-action {
-    min-height: 68px;
+    min-height: 58px;
     font-size: 11px;
   }
 
@@ -1690,7 +1689,7 @@ button {
   grid-template-columns: 90px 1fr;
   gap: 16px;
   align-items: center;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .selected-player-name-wrap {
@@ -1698,6 +1697,7 @@ button {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  gap: 6px;
 }
 
 .selected-player-name {
@@ -1767,19 +1767,18 @@ button {
 
 .selected-stat-line {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 900;
-  margin-bottom: 14px;
 }
 
 .selected-stat-line span {
-  padding: 8px 10px;
+  padding: 6px 9px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 900;
 }
 
@@ -1810,9 +1809,9 @@ button {
 .dock-action {
   border: none;
   border-radius: 16px;
-  min-height: 82px;
+  min-height: 64px;
   color: white;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 900;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.18),
@@ -1837,7 +1836,7 @@ button {
 }
 
 .dock-action::before {
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
 }
 
@@ -3075,12 +3074,12 @@ button {
   }
 
   .side-team-column {
-    gap: 6px;
+    gap: 4px;
   }
 
   .side-player {
-    min-height: 52px;
-    padding: 5px 4px;
+    min-height: 46px;
+    padding: 4px 4px;
     border-radius: 12px;
   }
 
@@ -3120,13 +3119,13 @@ button {
   }
 
   .selected-main-card {
-    min-height: 108px;
+    min-height: 94px;
   }
 
   .selected-player-header {
     grid-template-columns: 64px 1fr;
     gap: 10px;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
 
   .selected-jersey-card {
@@ -3144,13 +3143,12 @@ button {
   }
 
   .selected-stat-line {
-    gap: 6px;
-    margin-bottom: 8px;
+    gap: 5px;
   }
 
   .selected-stat-line span {
-    padding: 5px 7px;
-    font-size: 11px;
+    padding: 4px 6px;
+    font-size: 10px;
   }
 
   .action-dock-grid {
@@ -3158,12 +3156,12 @@ button {
   }
 
   .dock-action {
-    min-height: 62px;
-    font-size: 10px;
+    min-height: 52px;
+    font-size: 9px;
   }
 
   .dock-action::before {
-    font-size: 14px;
+    font-size: 12px;
   }
 
   .bottom-panel-court {
