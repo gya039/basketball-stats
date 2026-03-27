@@ -2031,10 +2031,27 @@ export default function App() {
             </div>
           )}
 
+          <div className="menu-grid">
+            <button className="menu-card" onClick={newMatchFromHome}>
+              <div className="menu-title">New Match</div>
+              <div className="menu-sub">Start a game with your saved home roster</div>
+            </button>
+
+            <button className="menu-card" onClick={() => setScreen('manageHome')}>
+              <div className="menu-title">Manage Home Team</div>
+              <div className="menu-sub">Edit team name, jersey numbers, and roster</div>
+            </button>
+
+            <button className="menu-card" onClick={() => setScreen('matches')}>
+              <div className="menu-title">Previous Matches</div>
+              <div className="menu-sub">See saved match summaries</div>
+            </button>
+          </div>
+
           {liveMatches.length > 0 && (
-            <div className="card">
+            <div className="card home-live-strip">
               <div className="section-title">Shared Live Matches</div>
-              <div className="matches-list">
+              <div className="matches-list live-matches-row">
                 {liveMatches.map((match) => (
                   <div className="match-history-card" key={match.id}>
                     <div className="match-history-meta">
@@ -2077,23 +2094,6 @@ export default function App() {
               </div>
             </div>
           )}
-
-          <div className="menu-grid">
-            <button className="menu-card" onClick={newMatchFromHome}>
-              <div className="menu-title">New Match</div>
-              <div className="menu-sub">Start a game with your saved home roster</div>
-            </button>
-
-            <button className="menu-card" onClick={() => setScreen('manageHome')}>
-              <div className="menu-title">Manage Home Team</div>
-              <div className="menu-sub">Edit team name, jersey numbers, and roster</div>
-            </button>
-
-            <button className="menu-card" onClick={() => setScreen('matches')}>
-              <div className="menu-title">Previous Matches</div>
-              <div className="menu-sub">See saved match summaries</div>
-            </button>
-          </div>
 
         </div>
       )}
@@ -2416,6 +2416,8 @@ export default function App() {
             setBottomPanelOpen={setBottomPanelOpen}
             changeQuarter={changeQuarter}
             setQuarterSummaryOpen={setQuarterSummaryOpen}
+            openFixAssistModal={openFixAssistModal}
+            fixAssistDisabled={fixableScoringEvents.length === 0}
             goToMenu={() => {
               setBottomPanelOpen(false)
               setScreen('home')
@@ -2436,8 +2438,6 @@ export default function App() {
             selectedPlayer={selectedPlayer}
             selectedStats={selectedStats}
             titansJerseyBack={titansJerseyBack}
-            fixableScoringEvents={fixableScoringEvents}
-            openFixAssistModal={openFixAssistModal}
             openSubModal={openSubModal}
             setShotModal={setShotModal}
             openReboundModal={openReboundModal}

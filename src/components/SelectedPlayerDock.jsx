@@ -1,3 +1,9 @@
+function getJerseyLastName(player) {
+  if (!player?.name) return ''
+  const parts = player.name.trim().split(/\s+/).filter(Boolean)
+  return (parts[parts.length - 1] || '').toUpperCase()
+}
+
 export default function SelectedPlayerDock({
   currentMatch,
   selectedTeam,
@@ -6,8 +12,6 @@ export default function SelectedPlayerDock({
   selectedPlayer,
   selectedStats,
   titansJerseyBack,
-  fixableScoringEvents,
-  openFixAssistModal,
   openSubModal,
   setShotModal,
   openReboundModal,
@@ -42,7 +46,7 @@ export default function SelectedPlayerDock({
             >
               <div className="selected-jersey-fill" aria-hidden="true" />
               <div className="selected-jersey-name-overlay">
-                {selectedPlayer.name.toUpperCase()}
+                {getJerseyLastName(selectedPlayer)}
               </div>
               <div className="selected-jersey-number-overlay">
                 {selectedPlayer.number}
@@ -50,48 +54,42 @@ export default function SelectedPlayerDock({
             </div>
           )}
 
-          <div className="selected-player-name-wrap">
-            <div className="selected-player-name">
-              {selectedPlayer ? selectedPlayer.name : 'Select a player'}
-            </div>
+          <div className="selected-player-info">
+            <div className="selected-player-meta-row">
+              <div className="selected-player-name-wrap">
+                <div className="selected-player-name">
+                  {selectedPlayer ? selectedPlayer.name : 'Select a player'}
+                </div>
 
-            {selectedPlayer && (
-              <div className="selected-player-subline">
-                #{selectedPlayer.number} -{' '}
-                {selectedTeam === 'home' ? currentMatch.home.name : currentMatch.away.name}
+                {selectedPlayer && (
+                  <div className="selected-player-subline">
+                    #{selectedPlayer.number} -{' '}
+                    {selectedTeam === 'home' ? currentMatch.home.name : currentMatch.away.name}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
 
-        <div className="selected-lower-row">
-          <div className="selected-tools-row">
-            <button
-              className="tiny-override-btn"
-              onClick={openFixAssistModal}
-              disabled={fixableScoringEvents.length === 0}
-            >
-              Fix Assist
-            </button>
-
-            {selectedPlayer && (
-              <button
-                className="tiny-override-btn"
-                onClick={() => openSubModal(selectedTeam, selectedPlayer.id)}
-              >
-                Sub Player
-              </button>
-            )}
-          </div>
-
-          {selectedPlayer && (
-            <div className="selected-stat-grid">
-              <span>{selectedStats.pts} PTS</span>
-              <span>{selectedStats.reb} REB</span>
-              <span>{selectedStats.ast} AST</span>
-              <span>{selectedStats.foul} PF</span>
+              {selectedPlayer && (
+                <div className="selected-stat-grid">
+                  <span>{selectedStats.pts} PTS</span>
+                  <span>{selectedStats.reb} REB</span>
+                  <span>{selectedStats.ast} AST</span>
+                  <span>{selectedStats.foul} PF</span>
+                </div>
+              )}
             </div>
-          )}
+
+            <div className="selected-tools-row">
+              {selectedPlayer && (
+                <button
+                  className="tiny-override-btn"
+                  onClick={() => openSubModal(selectedTeam, selectedPlayer.id)}
+                >
+                  Sub Player
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 

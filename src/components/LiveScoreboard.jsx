@@ -10,6 +10,8 @@ export default function LiveScoreboard({
   setBottomPanelOpen,
   changeQuarter,
   setQuarterSummaryOpen,
+  openFixAssistModal,
+  fixAssistDisabled,
   goToMenu,
   endMatch,
 }) {
@@ -44,6 +46,14 @@ export default function LiveScoreboard({
         <div className="center-actions">
           <button className="mini-panel-btn" onClick={goToMenu}>
             Back to Menu
+          </button>
+
+          <button
+            className="mini-panel-btn"
+            onClick={openFixAssistModal}
+            disabled={fixAssistDisabled}
+          >
+            Fix Assist
           </button>
 
           <button
