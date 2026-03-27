@@ -160,6 +160,28 @@ button {
   min-height: 100vh;
 }
 
+.pull-refresh-indicator {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1100;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgba(8, 18, 28, 0.9);
+  border: 1px solid rgba(147, 197, 253, 0.24);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.24);
+  color: #dbeafe;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(14px);
+}
+
+.pull-refresh-indicator.active {
+  border-color: rgba(96, 165, 250, 0.4);
+}
+
 .page {
   display: flex;
   flex-direction: column;
@@ -1050,6 +1072,9 @@ button {
   min-height: 100svh;
   overflow: hidden;
   padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .court-background {
@@ -1091,7 +1116,6 @@ button {
   grid-template-columns: 0.8fr 1.6fr 0.8fr;
   gap: 8px;
   align-items: center;
-  margin-bottom: 10px;
 }
 
 .score-team-block,
@@ -1451,7 +1475,6 @@ button {
   display: grid;
   grid-template-columns: minmax(360px, 1.3fr) minmax(300px, 0.9fr);
   gap: 14px;
-  margin-top: 14px;
   align-items: stretch;
 }
 
@@ -1476,10 +1499,6 @@ button {
 @media (min-width: 1181px) and (pointer: fine) {
   .live-court-page {
     padding: 8px;
-  }
-
-  .live-topbar {
-    margin-bottom: 8px;
   }
 
   .score-team-block,
@@ -1578,7 +1597,6 @@ button {
   .selected-player-dock {
     grid-template-columns: minmax(300px, 1.2fr) minmax(260px, 0.9fr);
     gap: 10px;
-    margin-top: 10px;
   }
 
   .selected-main-card {
@@ -1629,8 +1647,7 @@ button {
   }
 
   .bottom-panel-court {
-    margin-top: 10px;
-    max-height: 26vh;
+    max-height: min(62vh, 700px);
     padding: 10px 12px;
   }
 
@@ -1901,20 +1918,33 @@ button {
 
 .bottom-panel-court {
   position: relative;
-  z-index: 6;
-  margin-top: 12px;
-  max-height: 34vh;
+  z-index: 41;
+  width: min(1180px, 100%);
+  max-height: min(68svh, 760px);
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px 14px;
-}
-
-.drawer-panel.closed {
-  padding-bottom: 12px;
+  padding: 16px 18px;
+  margin: 0 auto;
 }
 
 .drawer-panel.open {
-  padding-bottom: 14px;
+  padding-bottom: 18px;
+}
+
+.bottom-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding:
+    max(16px, env(safe-area-inset-top, 0px))
+    max(16px, env(safe-area-inset-right, 0px))
+    calc(max(16px, env(safe-area-inset-bottom, 0px)) + 8px)
+    max(16px, env(safe-area-inset-left, 0px));
+  background: rgba(2, 8, 12, 0.48);
+  backdrop-filter: blur(6px);
 }
 
 .drawer-header {
@@ -2805,6 +2835,10 @@ button {
     padding: 18px;
   }
 
+  .pull-refresh-indicator {
+    top: calc(env(safe-area-inset-top, 0px) + 6px);
+  }
+
   .home-top-grid > .hero-card,
   .home-roster-card {
     min-height: 360px;
@@ -2978,14 +3012,13 @@ button {
 
   .live-court-page {
     height: 100svh;
-    padding: 8px;
+    padding: 10px;
     overflow: hidden;
   }
 
   .live-topbar {
     grid-template-columns: 0.72fr 1.28fr 0.72fr;
     gap: 8px;
-    margin-bottom: 8px;
   }
 
   .score-team-block,
@@ -3036,9 +3069,9 @@ button {
   }
 
   .live-main-layout {
-    grid-template-columns: 96px 1fr 96px;
+    grid-template-columns: 104px 1fr 104px;
     gap: 8px;
-    min-height: 260px;
+    min-height: 320px;
   }
 
   .side-team-column {
@@ -3068,7 +3101,7 @@ button {
   }
 
   .court-stage {
-    min-height: 260px;
+    min-height: 320px;
   }
 
   .court-logo-watermark {
@@ -3084,7 +3117,6 @@ button {
   .selected-player-dock {
     grid-template-columns: minmax(250px, 1.1fr) minmax(220px, 0.9fr);
     gap: 8px;
-    margin-top: 8px;
   }
 
   .selected-main-card {
@@ -3135,9 +3167,8 @@ button {
   }
 
   .bottom-panel-court {
-    margin-top: 8px;
-    max-height: 13svh;
-    padding: 8px 10px;
+    max-height: min(64svh, 680px);
+    padding: 12px 14px;
   }
 
   .drawer-header {

@@ -441,6 +441,8 @@ export default function App() {
   const [selectedSavedMatch, setSelectedSavedMatch] = useState(null)
   const [liveMatches, setLiveMatches] = useState([])
   const skipNextLiveSyncRef = useRef(false)
+  const pullRefreshStartRef = useRef(null)
+  const pullRefreshDistanceRef = useRef(0)
 
   const [homeTeam, setHomeTeam] = useState({
     name: 'Loading team...',
@@ -537,6 +539,47 @@ export default function App() {
   })
 
   const [quarterSummaryOpen, setQuarterSummaryOpen] = useState(false)
+  const [pullRefreshLabel, setPullRefreshLabel] = useState('')
+  const [isRefreshingMenuData, setIsRefreshingMenuData] = useState(false)
+
+  async function loadHomeTeamFromSupabase() {
+    const { data: teamRows, error: teamError } = await supabase
+      .from('teams')
+      .select('id, name, created_at')
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    if (teamError) {
+      console.error('Failed to load team from Supabase:', teamError)
+      return null
+    }
+
+    const teamRow = teamRows?.[0]
+
+    if (!teamRow) {
+      console.error('No team found in Supabase.')
+      return null
+    }
+
+    const { data: playerRows, error: playersError } = await supabase
+      .from('players')
+      .select('id, name, number')
+      .eq('team_id', teamRow.id)
+      .order('number', { ascending: true })
+
+    if (playersError) {
+      console.error('Failed to load players from Supabase:', playersError)
+      return null
+    }
+
+    setHomeTeamId(teamRow.id)
+    setHomeTeam({
+      name: teamRow.name,
+      players: playerRows || [],
+    })
+
+    return teamRow
+  }
 
   async function loadSavedMatchesFromSupabase() {
     const { data: matchRows, error: matchesError } = await supabase
@@ -630,6 +673,7 @@ export default function App() {
       skipNextLiveSyncRef.current = true
     }
 
+    setBottomPanelOpen(false)
     setCurrentMatchId(liveMatchRow.id)
     setCurrentMatch(liveMatch)
     setSelectedTeam('home')
@@ -637,45 +681,33 @@ export default function App() {
     setScreen('live')
   }
 
+  async function refreshSharedMenuData() {
+    setIsRefreshingMenuData(true)
+    setPullRefreshLabel('Refreshing...')
+
+    try {
+      await Promise.all([
+        loadHomeTeamFromSupabase(),
+        loadLiveMatchesFromSupabase(),
+        loadSavedMatchesFromSupabase(),
+      ])
+    } finally {
+      window.setTimeout(() => {
+        setIsRefreshingMenuData(false)
+        setPullRefreshLabel('')
+      }, 250)
+    }
+  }
+
   useEffect(() => {
     async function loadAppData() {
-      const { data: teamRows, error: teamError } = await supabase
-        .from('teams')
-        .select('id, name, created_at')
-        .order('created_at', { ascending: false })
-        .limit(1)
-
-      if (teamError) {
-        console.error('Failed to load team from Supabase:', teamError)
-        setHasLoaded(true)
-        return
-      }
-
-      const teamRow = teamRows?.[0]
+      const teamRow = await loadHomeTeamFromSupabase()
 
       if (!teamRow) {
-        console.error('No team found in Supabase.')
         setHasLoaded(true)
         return
       }
 
-      const { data: playerRows, error: playersError } = await supabase
-        .from('players')
-        .select('id, name, number')
-        .eq('team_id', teamRow.id)
-        .order('number', { ascending: true })
-
-      if (playersError) {
-        console.error('Failed to load players from Supabase:', playersError)
-        setHasLoaded(true)
-        return
-      }
-
-      setHomeTeamId(teamRow.id)
-      setHomeTeam({
-        name: teamRow.name,
-        players: playerRows || [],
-      })
       await loadLiveMatchesFromSupabase()
       await loadSavedMatchesFromSupabase()
 
@@ -755,6 +787,55 @@ export default function App() {
 
     syncLiveMatch()
   }, [currentMatch, currentMatchId, hasLoaded, homeTeamId])
+
+  function handleMenuTouchStart(e) {
+    if (screen === 'live' || screen === 'summary' || selectedSavedMatch || isRefreshingMenuData) return
+    if (window.scrollY > 4) return
+
+    const touch = e.touches?.[0]
+    if (!touch || touch.clientY > 110) return
+
+    pullRefreshStartRef.current = touch.clientY
+    pullRefreshDistanceRef.current = 0
+  }
+
+  function handleMenuTouchMove(e) {
+    if (pullRefreshStartRef.current == null) return
+
+    const touch = e.touches?.[0]
+    if (!touch) return
+
+    const distance = Math.max(0, touch.clientY - pullRefreshStartRef.current)
+    pullRefreshDistanceRef.current = distance
+
+    if (distance > 90) {
+      setPullRefreshLabel('Release to refresh')
+    } else if (distance > 38) {
+      setPullRefreshLabel('Pull to refresh')
+    } else {
+      setPullRefreshLabel('')
+    }
+  }
+
+  async function handleMenuTouchEnd() {
+    const shouldRefresh = pullRefreshDistanceRef.current > 90
+
+    pullRefreshStartRef.current = null
+    pullRefreshDistanceRef.current = 0
+
+    if (shouldRefresh) {
+      await refreshSharedMenuData()
+      return
+    }
+
+    setPullRefreshLabel('')
+  }
+
+  const pageGestureProps = {
+    onTouchStart: handleMenuTouchStart,
+    onTouchMove: handleMenuTouchMove,
+    onTouchEnd: handleMenuTouchEnd,
+  }
 
   useEffect(() => {
     if (!hasLoaded) return
@@ -1839,8 +1920,14 @@ export default function App() {
 
   return (
     <div className="app">
+      {(pullRefreshLabel || isRefreshingMenuData) && screen !== 'live' && (
+        <div className={`pull-refresh-indicator ${isRefreshingMenuData ? 'active' : ''}`}>
+          {pullRefreshLabel}
+        </div>
+      )}
+
       {screen === 'home' && (
-        <div className="page home-page">
+        <div className="page home-page" {...pageGestureProps}>
           <div className="home-top-grid">
             <div className="hero-card">
             <div className="hero-icon">🏀</div>
@@ -1957,7 +2044,7 @@ export default function App() {
       )}
 
       {screen === 'manageHome' && (
-        <div className="page">
+        <div className="page" {...pageGestureProps}>
           <div className="topbar">
             <button className="back-btn" onClick={() => setScreen('home')}>
               ← Back
@@ -2030,7 +2117,7 @@ export default function App() {
       )}
 
       {screen === 'newMatch' && (
-        <div className="page">
+        <div className="page" {...pageGestureProps}>
           <div className="topbar">
             <button className="back-btn" onClick={() => setScreen('home')}>
               ← Back
@@ -2137,7 +2224,7 @@ export default function App() {
       )}
 
       {screen === 'startingFive' && (
-        <div className="page">
+        <div className="page" {...pageGestureProps}>
           <div className="topbar">
             <button className="back-btn" onClick={() => setScreen('newMatch')}>
               ← Back
@@ -2184,7 +2271,10 @@ export default function App() {
             setBottomPanelOpen={setBottomPanelOpen}
             changeQuarter={changeQuarter}
             setQuarterSummaryOpen={setQuarterSummaryOpen}
-            goToMenu={() => setScreen('home')}
+            goToMenu={() => {
+              setBottomPanelOpen(false)
+              setScreen('home')
+            }}
             endMatch={endMatch}
           />
 
@@ -2299,7 +2389,7 @@ export default function App() {
       )}
 
       {screen === 'matches' && (
-        <div className="page matches-page">
+        <div className="page matches-page" {...pageGestureProps}>
           <div className="topbar">
             <button className="back-btn" onClick={() => setScreen('home')}>
               ← Back
