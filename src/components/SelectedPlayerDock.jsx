@@ -1,6 +1,7 @@
 export default function SelectedPlayerDock({
   currentMatch,
   selectedTeam,
+  selectedTeamColor,
   selectedPlayer,
   selectedStats,
   titansJerseyBack,
@@ -14,8 +15,17 @@ export default function SelectedPlayerDock({
 }) {
   return (
     <div className="selected-player-dock">
-      <div className="selected-main-card">
-        <div className="selected-team-badge">
+      <div
+        className="selected-main-card"
+        style={{
+          borderColor: `${selectedTeamColor}55`,
+          boxShadow: `inset 0 0 0 1px ${selectedTeamColor}22`,
+        }}
+      >
+        <div
+          className="selected-team-badge"
+          style={{ background: selectedTeamColor }}
+        >
           {selectedTeam === 'home' ? currentMatch.home.name : currentMatch.away.name}
         </div>
 
@@ -38,39 +48,41 @@ export default function SelectedPlayerDock({
             </div>
 
             {selectedPlayer && (
-              <>
-                <div className="selected-player-subline">
-                  #{selectedPlayer.number} -{' '}
-                  {selectedTeam === 'home' ? currentMatch.home.name : currentMatch.away.name}
-                </div>
-
-                <div className="selected-stat-line">
-                  <span>{selectedStats.pts} PTS</span>
-                  <span>{selectedStats.reb} REB</span>
-                  <span>{selectedStats.ast} AST</span>
-                  <span>{selectedStats.foul} PF</span>
-                </div>
-              </>
+              <div className="selected-player-subline">
+                #{selectedPlayer.number} -{' '}
+                {selectedTeam === 'home' ? currentMatch.home.name : currentMatch.away.name}
+              </div>
             )}
           </div>
         </div>
 
-        <div className="selected-tools-row">
-          <button
-            className="tiny-override-btn"
-            onClick={openFixAssistModal}
-            disabled={fixableScoringEvents.length === 0}
-          >
-            Fix Assist
-          </button>
-
-          {selectedPlayer && (
+        <div className="selected-lower-row">
+          <div className="selected-tools-row">
             <button
               className="tiny-override-btn"
-              onClick={() => openSubModal(selectedTeam, selectedPlayer.id)}
+              onClick={openFixAssistModal}
+              disabled={fixableScoringEvents.length === 0}
             >
-              Sub Player
+              Fix Assist
             </button>
+
+            {selectedPlayer && (
+              <button
+                className="tiny-override-btn"
+                onClick={() => openSubModal(selectedTeam, selectedPlayer.id)}
+              >
+                Sub Player
+              </button>
+            )}
+          </div>
+
+          {selectedPlayer && (
+            <div className="selected-stat-grid">
+              <span>{selectedStats.pts} PTS</span>
+              <span>{selectedStats.reb} REB</span>
+              <span>{selectedStats.ast} AST</span>
+              <span>{selectedStats.foul} PF</span>
+            </div>
           )}
         </div>
       </div>

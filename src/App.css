@@ -337,6 +337,19 @@ button {
   gap: 12px;
 }
 
+.team-color-picker-row {
+  margin-top: 12px;
+}
+
+.team-color-input {
+  width: 100%;
+  height: 54px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 8px;
+}
+
 .triple-row {
   display: grid;
   grid-template-columns: 1fr 130px 110px;
@@ -1278,11 +1291,19 @@ button {
 }
 
 .side-player.home {
-  background: linear-gradient(180deg, rgba(37, 99, 235, 0.98), rgba(29, 78, 216, 0.9));
+  background: linear-gradient(
+    180deg,
+    var(--team-color, rgba(37, 99, 235, 0.98)),
+    color-mix(in srgb, var(--team-color, #2f6df6) 76%, black)
+  );
 }
 
 .side-player.away {
-  background: linear-gradient(180deg, rgba(239, 68, 68, 0.98), rgba(185, 28, 28, 0.9));
+  background: linear-gradient(
+    180deg,
+    var(--team-color, rgba(239, 68, 68, 0.98)),
+    color-mix(in srgb, var(--team-color, #ef4444) 76%, black)
+  );
 }
 
 .side-player.selected {
@@ -1623,11 +1644,17 @@ button {
     font-size: 12px;
   }
 
-  .selected-stat-line {
-    gap: 8px;
+  .selected-lower-row {
+    grid-template-columns: 104px minmax(0, 1fr);
+    gap: 10px;
   }
 
-  .selected-stat-line span {
+  .selected-stat-grid {
+    gap: 6px;
+  }
+
+  .selected-stat-grid span {
+    min-height: 34px;
     padding: 6px 8px;
     font-size: 12px;
   }
@@ -1765,17 +1792,26 @@ button {
     -1px -1px 0 rgba(0, 0, 0, 0.35);
 }
 
-.selected-stat-line {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  font-size: 13px;
-  font-weight: 900;
+.selected-lower-row {
+  display: grid;
+  grid-template-columns: minmax(112px, 132px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
 }
 
-.selected-stat-line span {
-  padding: 6px 9px;
-  border-radius: 999px;
+.selected-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.selected-stat-grid span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 6px 8px;
+  border-radius: 14px;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
   font-size: 12px;
@@ -1783,9 +1819,8 @@ button {
 }
 
 .selected-tools-row {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+  display: grid;
+  gap: 8px;
 }
 
 .tiny-override-btn {
@@ -3142,11 +3177,17 @@ button {
     margin-top: 4px;
   }
 
-  .selected-stat-line {
-    gap: 5px;
+  .selected-lower-row {
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 8px;
   }
 
-  .selected-stat-line span {
+  .selected-stat-grid {
+    gap: 6px;
+  }
+
+  .selected-stat-grid span {
+    min-height: 28px;
     padding: 4px 6px;
     font-size: 10px;
   }
@@ -3162,6 +3203,12 @@ button {
 
   .dock-action::before {
     font-size: 12px;
+  }
+
+  .tiny-override-btn {
+    min-height: 42px;
+    padding: 8px 10px;
+    font-size: 11px;
   }
 
   .bottom-panel-court {

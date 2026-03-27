@@ -15,6 +15,9 @@ const STORAGE_KEYS = {
   currentMatch: 'basketball_current_match_v11',
 }
 
+const HOME_TEAM_COLOR = '#2f6df6'
+const DEFAULT_AWAY_COLOR = '#ef4444'
+
 function createPlayer(name, number) {
   return {
     id: `p_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -405,6 +408,9 @@ function getStatsForTeamPlayer(match, teamKey, playerId) {
 }
 
 function mapSupabaseMatchRow(row, events = []) {
+  const homeColor = row.home_players?.[0]?.teamColor || HOME_TEAM_COLOR
+  const awayColor = row.away_players?.[0]?.teamColor || DEFAULT_AWAY_COLOR
+
   return {
     id: row.id,
     date: row.date || '',
@@ -423,11 +429,13 @@ function mapSupabaseMatchRow(row, events = []) {
     },
     home: {
       name: row.home_team_name,
+      color: homeColor,
       players: row.home_players || [],
       onCourt: row.home_on_court || [],
     },
     away: {
       name: row.away_team_name,
+      color: awayColor,
       players: row.away_players || [],
       onCourt: row.away_on_court || [],
     },
@@ -470,6 +478,7 @@ export default function App() {
     ],
     date: getTodayDateString(),
     venue: '',
+    opponentColor: DEFAULT_AWAY_COLOR,
   })
 
   const [startingFive, setStartingFive] = useState({
@@ -940,6 +949,7 @@ export default function App() {
     ],
       date: getTodayDateString(),
       venue: '',
+      opponentColor: DEFAULT_AWAY_COLOR,
     })
     setStartingFive({ home: [], away: [] })
   }
@@ -1103,6 +1113,15 @@ export default function App() {
       return
     }
 
+    const homePlayersForMatch = homeTeam.players.map((player) => ({
+      ...player,
+      teamColor: HOME_TEAM_COLOR,
+    }))
+    const awayPlayersForMatch = newMatch.opponentPlayers.map((player) => ({
+      ...player,
+      teamColor: newMatch.opponentColor || DEFAULT_AWAY_COLOR,
+    }))
+
     const match = {
       id: Date.now().toString(),
       date: newMatch.date || new Date().toISOString().slice(0, 10),
@@ -1110,12 +1129,14 @@ export default function App() {
       quarter: 1,
       home: {
         name: homeTeam.name.trim() || 'Home Team',
-        players: [...homeTeam.players],
+        color: HOME_TEAM_COLOR,
+        players: homePlayersForMatch,
         onCourt: [...startingFive.home],
       },
       away: {
         name: newMatch.opponentName.trim() || 'Opponent',
-        players: [...newMatch.opponentPlayers],
+        color: newMatch.opponentColor || DEFAULT_AWAY_COLOR,
+        players: awayPlayersForMatch,
         onCourt: [...startingFive.away],
       },
       events: [],
@@ -1784,6 +1805,7 @@ export default function App() {
     return team.onCourt.map((playerId) => {
       const player = findPlayerById(team.players, playerId)
       if (!player) return null
+      const teamColor = team.color || player.teamColor || (teamKey === 'home' ? HOME_TEAM_COLOR : DEFAULT_AWAY_COLOR)
 
       const s = getOnCourtStats(playerId, teamEvents)
       const selected = selectedTeam === teamKey && selectedPlayerId === player.id
@@ -1794,6 +1816,7 @@ export default function App() {
         <button
           key={player.id}
           className={`side-player ${teamKey} ${selected ? 'selected' : ''} ${foulClass} ${playerFlashMap[player.id] || ''}`}
+          style={{ '--team-color': teamColor }}
           onClick={() => {
             setSelectedTeam(teamKey)
             setSelectedPlayerId(player.id)
@@ -1917,6 +1940,11 @@ export default function App() {
   const recentSavedMatch = savedMatches[0] || null
   const previewPlayers = homeTeam.players.slice(0, 5)
   const extraPlayersCount = Math.max(homeTeam.players.length - previewPlayers.length, 0)
+  const selectedTeamColor = currentMatch
+    ? currentMatch[selectedTeam]?.color ||
+      currentMatch[selectedTeam]?.players?.[0]?.teamColor ||
+      (selectedTeam === 'home' ? HOME_TEAM_COLOR : DEFAULT_AWAY_COLOR)
+    : HOME_TEAM_COLOR
 
   return (
     <div className="app">
@@ -2181,6 +2209,23 @@ export default function App() {
                 />
               </div>
             </div>
+
+            <div className="team-color-picker-row">
+              <div>
+                <label className="field-label">Opponent Team Colour</label>
+                <input
+                  className="team-color-input"
+                  type="color"
+                  value={newMatch.opponentColor}
+                  onChange={(e) =>
+                    setNewMatch((prev) => ({
+                      ...prev,
+                      opponentColor: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+            </div>
           </div>
 
           <div className="card">
@@ -2286,6 +2331,7 @@ export default function App() {
           <SelectedPlayerDock
             currentMatch={currentMatch}
             selectedTeam={selectedTeam}
+            selectedTeamColor={selectedTeamColor}
             selectedPlayer={selectedPlayer}
             selectedStats={selectedStats}
             titansJerseyBack={titansJerseyBack}
