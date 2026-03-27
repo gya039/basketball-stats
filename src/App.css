@@ -1515,13 +1515,13 @@ button {
   display: grid;
   grid-template-columns: minmax(360px, 1.3fr) minmax(300px, 0.9fr);
   gap: 14px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .selected-main-card {
   background: linear-gradient(135deg, rgba(9, 16, 25, 0.97), rgba(14, 24, 36, 0.93));
   padding: 18px;
-  min-height: 132px;
+  min-height: 0;
   border: 1px solid rgba(147, 197, 253, 0.14);
 }
 
@@ -1907,7 +1907,8 @@ button {
   grid-template-rows: repeat(2, minmax(0, 1fr));
   gap: 10px;
   align-items: stretch;
-  min-height: 100%;
+  align-self: start;
+  min-height: 0;
 }
 
 .dock-action {
@@ -1930,6 +1931,14 @@ button {
   text-align: center;
   transition: all 0.2s ease;
   position: relative;
+}
+
+.quarter-btn:disabled,
+.mini-panel-btn:disabled,
+.end-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .dock-action:active {

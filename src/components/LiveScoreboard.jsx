@@ -12,6 +12,8 @@ export default function LiveScoreboard({
   setQuarterSummaryOpen,
   openFixAssistModal,
   fixAssistDisabled,
+  quarterNavLocked,
+  endMatchDisabled,
   goToMenu,
   endMatch,
 }) {
@@ -28,12 +30,20 @@ export default function LiveScoreboard({
 
       <div className="score-center-block">
         <div className="quarter-controls">
-          <button className="quarter-btn" onClick={() => changeQuarter(-1)}>
-            ‹
+          <button
+            className="quarter-btn"
+            onClick={() => changeQuarter(-1)}
+            disabled={quarterNavLocked}
+          >
+            {'<'}
           </button>
           <div className="quarter-label">Q{currentMatch.quarter}</div>
-          <button className="quarter-btn" onClick={() => changeQuarter(1)}>
-            ›
+          <button
+            className="quarter-btn"
+            onClick={() => changeQuarter(1)}
+            disabled={quarterNavLocked}
+          >
+            {'>'}
           </button>
         </div>
 
@@ -77,7 +87,7 @@ export default function LiveScoreboard({
           </button>
         </div>
 
-        <button className="end-btn" onClick={endMatch}>
+        <button className="end-btn" onClick={endMatch} disabled={endMatchDisabled}>
           End Match
         </button>
       </div>

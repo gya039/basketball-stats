@@ -947,6 +947,40 @@ export default function App() {
   const groupedLog = useMemo(() => getEventsByQuarter(allEvents), [allEvents])
   const fixableScoringEvents = useMemo(() => getFixableScoringEvents(allEvents), [allEvents])
   const quarterScores = useMemo(() => getAllQuarterScores(allEvents), [allEvents])
+  const isHalftimeSummary = currentMatch?.quarter === 2
+  const quarterSummaryTitle = isHalftimeSummary ? 'Half-Time Summary' : `Quarter ${currentMatch?.quarter} Summary`
+  const halftimeEvents = useMemo(
+    () => allEvents.filter((evt) => evt.quarter === 1 || evt.quarter === 2),
+    [allEvents]
+  )
+  const halftimeHomeEvents = useMemo(
+    () => halftimeEvents.filter((evt) => evt.teamKey === 'home'),
+    [halftimeEvents]
+  )
+  const halftimeAwayEvents = useMemo(
+    () => halftimeEvents.filter((evt) => evt.teamKey === 'away'),
+    [halftimeEvents]
+  )
+  const halftimeTotals = useMemo(() => {
+    if (!currentMatch) {
+      return {
+        home: getEmptyStatLine(),
+        away: getEmptyStatLine(),
+      }
+    }
+
+    return {
+      home: getTeamTotals(currentMatch.home.players, halftimeHomeEvents),
+      away: getTeamTotals(currentMatch.away.players, halftimeAwayEvents),
+    }
+  }, [currentMatch, halftimeAwayEvents, halftimeHomeEvents])
+  const halftimeScore = useMemo(
+    () => ({
+      home: quarterScores[1].home + quarterScores[2].home,
+      away: quarterScores[1].away + quarterScores[2].away,
+    }),
+    [quarterScores]
+  )
 
   function resetNewMatchForm() {
     setNewMatch({
@@ -1203,10 +1237,15 @@ export default function App() {
   }
 
   function changeQuarter(delta) {
-    if (!currentMatch) return
+    if (!currentMatch || delta === 0) return
+    alert('Use Quarter Over to move to the next quarter.')
+  }
+
+  function advanceQuarterFromSummary() {
+    if (!currentMatch || currentMatch.quarter >= 4) return
     setCurrentMatch((prev) => ({
       ...prev,
-      quarter: Math.max(1, Math.min(4, prev.quarter + delta)),
+      quarter: prev.quarter + 1,
     }))
   }
 
@@ -1680,6 +1719,10 @@ export default function App() {
 
   function endMatch() {
     if (!currentMatch) return
+    if (currentMatch.quarter < 4) {
+      alert('You can only end the match in Q4.')
+      return
+    }
     setScreen('summary')
   }
 
@@ -2418,6 +2461,8 @@ export default function App() {
             setQuarterSummaryOpen={setQuarterSummaryOpen}
             openFixAssistModal={openFixAssistModal}
             fixAssistDisabled={fixableScoringEvents.length === 0}
+            quarterNavLocked
+            endMatchDisabled={currentMatch.quarter < 4}
             goToMenu={() => {
               setBottomPanelOpen(false)
               setScreen('home')
@@ -3027,6 +3072,102 @@ export default function App() {
       )}
 
       {quarterSummaryOpen && currentMatch && (
+        <div className="modal-overlay" onClick={() => setQuarterSummaryOpen(false)}>
+          <div className="modal-card quarter-summary-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-top">
+              <h3>{quarterSummaryTitle}</h3>
+              <button className="modal-close" onClick={() => setQuarterSummaryOpen(false)}>
+                x
+              </button>
+            </div>
+
+            <div className="quarter-summary-content">
+              <div className="quarter-summary-team">
+                <div className="summary-team-name">{currentMatch.home.name}</div>
+                <div className="summary-score">
+                  {isHalftimeSummary ? halftimeScore.home : currentQuarterScore.home}
+                </div>
+                <div className="summary-label">Points</div>
+                <div className="summary-stats-grid">
+                  <div>
+                    <span className="stat-label">Fouls:</span>{' '}
+                    {isHalftimeSummary ? halftimeTotals.home.fouls : currentQuarterFouls.home}
+                  </div>
+                  <div>
+                    <span className="stat-label">Reb:</span>{' '}
+                    {isHalftimeSummary ? halftimeTotals.home.rebounds : homeTotals.rebounds}
+                  </div>
+                  <div>
+                    <span className="stat-label">Ast:</span>{' '}
+                    {isHalftimeSummary ? halftimeTotals.home.assists : homeTotals.assists}
+                  </div>
+                </div>
+              </div>
+
+              <div className="quarter-summary-divider" />
+
+              <div className="quarter-summary-team">
+                <div className="summary-team-name">{currentMatch.away.name}</div>
+                <div className="summary-score">
+                  {isHalftimeSummary ? halftimeScore.away : currentQuarterScore.away}
+                </div>
+                <div className="summary-label">Points</div>
+                <div className="summary-stats-grid">
+                  <div>
+                    <span className="stat-label">Fouls:</span>{' '}
+                    {isHalftimeSummary ? halftimeTotals.away.fouls : currentQuarterFouls.away}
+                  </div>
+                  <div>
+                    <span className="stat-label">Reb:</span>{' '}
+                    {isHalftimeSummary ? halftimeTotals.away.rebounds : awayTotals.rebounds}
+                  </div>
+                  <div>
+                    <span className="stat-label">Ast:</span>{' '}
+                    {isHalftimeSummary ? halftimeTotals.away.assists : awayTotals.assists}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="quarter-summary-actions">
+              <button className="danger-outline-btn" onClick={() => setQuarterSummaryOpen(false)}>
+                Back to Game
+              </button>
+              <button
+                className="mini-panel-btn"
+                onClick={() => {
+                  setPanelView('log')
+                  setBottomPanelOpen(true)
+                }}
+              >
+                Live Log
+              </button>
+              <button
+                className="mini-panel-btn"
+                onClick={() => {
+                  setPanelView('box')
+                  setBottomPanelOpen(true)
+                }}
+              >
+                Box Score
+              </button>
+              {currentMatch.quarter < 4 && (
+                <button
+                  className="primary-btn"
+                  onClick={() => {
+                    advanceQuarterFromSummary()
+                    setQuarterSummaryOpen(false)
+                  }}
+                >
+                  {isHalftimeSummary ? 'Start Q3' : `Start Q${currentMatch.quarter + 1}`}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {false && quarterSummaryOpen && currentMatch && (
         <div className="modal-overlay" onClick={() => setQuarterSummaryOpen(false)}>
           <div className="modal-card quarter-summary-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-top">
