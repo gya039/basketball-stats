@@ -1187,10 +1187,7 @@ button {
   line-height: 0.9;
   margin: 4px 0 6px;
   letter-spacing: -0.05em;
-  background: linear-gradient(135deg, #93c5fd, #bfdbfe);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #ffffff;
   transition: transform 0.24s ease;
 }
 

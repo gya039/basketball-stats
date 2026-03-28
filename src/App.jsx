@@ -2457,11 +2457,9 @@ export default function App() {
             bottomPanelOpen={bottomPanelOpen}
             setPanelView={setPanelView}
             setBottomPanelOpen={setBottomPanelOpen}
-            changeQuarter={changeQuarter}
             setQuarterSummaryOpen={setQuarterSummaryOpen}
             openFixAssistModal={openFixAssistModal}
             fixAssistDisabled={fixableScoringEvents.length === 0}
-            quarterNavLocked
             endMatchDisabled={currentMatch.quarter < 4}
             goToMenu={() => {
               setBottomPanelOpen(false)
