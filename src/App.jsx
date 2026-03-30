@@ -19,6 +19,96 @@ const HOME_TEAM_COLOR = '#2f6df6'
 const HOME_TEAM_SECONDARY_COLOR = '#93c5fd'
 const DEFAULT_AWAY_COLOR = '#ef4444'
 const DEFAULT_AWAY_SECONDARY_COLOR = '#fca5a5'
+const COACH_FOUL_LIMIT = 3
+const FOUL_TYPE_CONFIG = {
+  personal: {
+    label: 'Personal',
+    description: 'Counts as a team foul. Can award 0-3 free throws depending on the play.',
+    freeThrows: [0, 1, 2, 3],
+  },
+  offensive: {
+    label: 'Offensive',
+    description: 'Counts as a team foul. No free throws awarded.',
+    freeThrows: [0],
+  },
+  unsportsmanlike: {
+    label: 'Unsportsmanlike',
+    description: 'Counts as a team foul. Awards 1-2 free throws and the other team keeps the ball.',
+    freeThrows: [1, 2],
+  },
+  disqualifying: {
+    label: 'Disqualifying',
+    description: 'Counts as a team foul. Awards 1-2 free throws.',
+    freeThrows: [1, 2],
+  },
+  technical: {
+    label: 'Technical',
+    description:
+      'Player technicals count as team fouls. Coach or bench technicals go on the coach and do not count as team fouls.',
+    freeThrows: [1, 2, 3],
+  },
+}
+
+function createEmptyFoulModal() {
+  return {
+    open: false,
+    step: 'type',
+    foulerTeamKey: '',
+    foulerId: '',
+    chargedEntity: 'player',
+    foulType: '',
+    fouledPlayerId: '',
+    freeThrowCount: 0,
+    freeThrowShooterId: '',
+  }
+}
+
+function getCoachFoulerId(teamKey) {
+  return `${teamKey}_coach_foul`
+}
+
+function getAllowedFoulTypes(chargedEntity) {
+  if (chargedEntity === 'coach' || chargedEntity === 'bench') {
+    return ['technical']
+  }
+
+  return ['personal', 'offensive', 'unsportsmanlike', 'disqualifying', 'technical']
+}
+
+function foulRequiresFouledPlayer(foulType, chargedEntity) {
+  if (chargedEntity !== 'player') return false
+  return ['personal', 'unsportsmanlike', 'disqualifying'].includes(foulType)
+}
+
+function foulCountsAsTeamFoul(foulType, chargedEntity) {
+  if (chargedEntity === 'coach' || chargedEntity === 'bench') return false
+  if (foulType === 'technical' && chargedEntity !== 'player') return false
+  return true
+}
+
+function getCoachFoulCount(events, teamKey) {
+  return events.filter(
+    (evt) =>
+      evt.type === 'foul' &&
+      evt.teamKey === teamKey &&
+      (evt.chargedEntity === 'coach' || evt.chargedEntity === 'bench')
+  ).length
+}
+
+function getFoulActorLabel(match, teamKey, evt) {
+  const team = match[teamKey]
+
+  if (evt.chargedEntity === 'coach') {
+    return `${team.name} coach`
+  }
+
+  if (evt.chargedEntity === 'bench') {
+    return `${team.name} bench (charged to coach)`
+  }
+
+  const player = findPlayerById(team.players, evt.foulerId)
+  return formatPlayer(player)
+}
 
 function createPlayer(name, number) {
   return {
@@ -297,7 +387,7 @@ function getAllQuarterScores(events) {
 function getTeamFoulsByQuarter(events, quarter) {
   return events.reduce(
     (acc, evt) => {
-      if (evt.type === 'foul' && evt.quarter === quarter) {
+      if (evt.type === 'foul' && evt.quarter === quarter && evt.countsAsTeamFoul !== false) {
         acc[evt.teamKey] += 1
       }
       return acc
@@ -394,6 +484,74 @@ function describeEvent(evt, match) {
   return 'Event'
 }
 
+function describeMatchEvent(evt, match) {
+  if (evt.type === 'shot') {
+    const team = match[evt.teamKey]
+    const oppTeam = evt.teamKey === 'home' ? match.away : match.home
+    const shooter = findPlayerById(team.players, evt.shooterId)
+    const assister = evt.assistPlayerId ? findPlayerById(team.players, evt.assistPlayerId) : null
+    const blocker = evt.blockerId ? findPlayerById(oppTeam.players, evt.blockerId) : null
+
+    if (evt.result === 'made') {
+      if (evt.shotType === 'FT') {
+        return `${formatPlayer(shooter)} made FT ${evt.freeThrowNumber || 1} of ${evt.freeThrowTotal || 1}`
+      }
+
+      return `${formatPlayer(shooter)} made ${evt.shotType}${assister ? ` - AST ${formatPlayer(assister)}` : ''}`
+    }
+
+    if (evt.shotType === 'FT') {
+      return `${formatPlayer(shooter)} missed FT ${evt.freeThrowNumber || 1} of ${evt.freeThrowTotal || 1}`
+    }
+
+    return `${formatPlayer(shooter)} missed ${evt.shotType}${blocker ? ` - BLK ${formatPlayer(blocker)}` : ''}`
+  }
+
+  if (evt.type === 'rebound') {
+    const team = match[evt.teamKey]
+    const player = evt.playerId ? findPlayerById(team.players, evt.playerId) : null
+
+    if (!player) return `${team.name} team rebound`
+    return `${formatPlayer(player)} ${evt.reboundType === 'oreb' ? 'offensive' : 'defensive'} rebound`
+  }
+
+  if (evt.type === 'foul') {
+    const fouledTeam = evt.teamKey === 'home' ? match.away : match.home
+    const fouled = findPlayerById(fouledTeam.players, evt.fouledPlayerId)
+    const foulTypeLabel = FOUL_TYPE_CONFIG[evt.foulType]?.label || 'Foul'
+    const actorLabel = getFoulActorLabel(match, evt.teamKey, evt)
+    const shotsLabel =
+      evt.freeThrowsAwarded > 0
+        ? `, ${evt.freeThrowsAwarded} FT${evt.freeThrowsAwarded > 1 ? 's' : ''} awarded`
+        : ''
+    const possessionLabel = evt.retainsPossession ? ', possession retained' : ''
+
+    if (fouled) {
+      return `${foulTypeLabel} foul - ${actorLabel} on ${formatPlayer(fouled)}${shotsLabel}${possessionLabel}`
+    }
+
+    return `${foulTypeLabel} foul - ${actorLabel}${shotsLabel}${possessionLabel}`
+  }
+
+  if (evt.type === 'turnover') {
+    const team = match[evt.teamKey]
+    const oppTeam = evt.teamKey === 'home' ? match.away : match.home
+    const player = findPlayerById(team.players, evt.playerId)
+    const stealer = evt.forcedByPlayerId ? findPlayerById(oppTeam.players, evt.forcedByPlayerId) : null
+
+    return `${formatPlayer(player)} turnover${stealer ? ` - STL ${formatPlayer(stealer)}` : ''}`
+  }
+
+  if (evt.type === 'substitution') {
+    const team = match[evt.teamKey]
+    const outPlayer = findPlayerById(team.players, evt.playerOutId)
+    const inPlayer = findPlayerById(team.players, evt.playerInId)
+    return `${formatPlayer(outPlayer)} out - ${formatPlayer(inPlayer)} in`
+  }
+
+  return 'Event'
+}
+
 function getSelectedPlayerStats(selectedPlayer, statsMap) {
   if (!selectedPlayer) return getEmptyStatLine()
   return statsMap[selectedPlayer.id] || getEmptyStatLine()
@@ -459,6 +617,8 @@ export default function App() {
   const skipNextLiveSyncRef = useRef(false)
   const pullRefreshStartRef = useRef(null)
   const pullRefreshDistanceRef = useRef(0)
+  const courtHoldTimeoutRef = useRef(null)
+  const courtPressRef = useRef(null)
 
   const [homeTeam, setHomeTeam] = useState({
     name: 'Loading team...',
@@ -522,13 +682,10 @@ export default function App() {
     teamKey: '',
     shooterId: '',
     shotType: '',
+    shotLocation: null,
   })
 
-  const [foulModal, setFoulModal] = useState({
-    open: false,
-    foulerTeamKey: '',
-    foulerId: '',
-  })
+  const [foulModal, setFoulModal] = useState(createEmptyFoulModal)
 
   const [reboundModal, setReboundModal] = useState({
     open: false,
@@ -556,6 +713,15 @@ export default function App() {
     current: 1,
     teamKey: '',
     shooterId: '',
+  })
+  const [courtShotFlow, setCourtShotFlow] = useState({
+    open: false,
+    step: 'shooter',
+    mode: 'missed',
+    shooterTeamKey: '',
+    shooterId: '',
+    shotType: '',
+    location: null,
   })
 
   const [quarterSummaryOpen, setQuarterSummaryOpen] = useState(false)
@@ -1283,6 +1449,41 @@ export default function App() {
     })
   }
 
+  function closeCourtShotFlow() {
+    setCourtShotFlow({
+      open: false,
+      step: 'shooter',
+      mode: 'missed',
+      shooterTeamKey: '',
+      shooterId: '',
+      shotType: '',
+      location: null,
+    })
+  }
+
+  function openCourtShotFlow(mode, location) {
+    if (!currentMatch) return
+
+    setCourtShotFlow({
+      open: true,
+      step: 'shooter',
+      mode,
+      shooterTeamKey: '',
+      shooterId: '',
+      shotType: '',
+      location,
+    })
+  }
+
+  function chooseCourtShotShooter(teamKey, shooterId) {
+    setCourtShotFlow((prev) => ({
+      ...prev,
+      shooterTeamKey: teamKey,
+      shooterId,
+      step: 'shotType',
+    }))
+  }
+
   function closeFreeThrowFlow() {
     setFreeThrowFlow({
       open: false,
@@ -1343,25 +1544,20 @@ export default function App() {
     }
   }
 
-  function submitShot() {
-    if (!currentMatch || !selectedPlayerId) return
-    const { shotType, result } = shotModal
-    if (!shotType) return
-    if (shotType !== 'FT' && !result) return
+  function recordShot({ teamKey, shooterId, shotType, result, shotLocation = null }) {
+    if (!currentMatch || !teamKey || !shooterId || !shotType) return
 
-    const teamKey = selectedTeam
     const team = currentMatch[teamKey]
     const lineupSnapshot = [...team.onCourt]
 
     if (shotType === 'FT') {
-      closeShotModal()
       setFreeThrowFlow({
         open: true,
         step: 'count',
         total: 1,
         current: 1,
         teamKey,
-        shooterId: selectedPlayerId,
+        shooterId,
       })
       return
     }
@@ -1370,10 +1566,10 @@ export default function App() {
       setAssistModal({
         open: true,
         teamKey,
-        shooterId: selectedPlayerId,
+        shooterId,
         shotType,
+        shotLocation,
       })
-      closeShotModal()
       return
     }
 
@@ -1392,11 +1588,12 @@ export default function App() {
       type: 'shot',
       shotType,
       result,
-      shooterId: selectedPlayerId,
+      shooterId,
       assistPlayerId: null,
       blockerId: null,
       points,
       lineupSnapshot,
+      shotLocation,
     })
 
     const updatedMatch = {
@@ -1405,12 +1602,9 @@ export default function App() {
     }
 
     setCurrentMatch(updatedMatch)
-    if (result === 'missed') {
-  flashPlayer(selectedPlayerId, 'player-missed')
-}
-    closeShotModal()
 
-    if (result === 'missed' && (shotType === '2PT' || shotType === '3PT')) {
+    if (result === 'missed') {
+      flashPlayer(shooterId, 'player-missed')
       setReboundModal({
         open: true,
         relatedShotEventId: shotEvent.id,
@@ -1418,13 +1612,31 @@ export default function App() {
         reboundType: '',
         pickerTeamKey: '',
       })
+      return
     }
+
+    flashPlayer(shooterId, 'player-made')
+  }
+
+  function submitShot() {
+    if (!currentMatch || !selectedPlayerId) return
+    const { shotType, result } = shotModal
+    if (!shotType) return
+    if (shotType !== 'FT' && !result) return
+    closeShotModal()
+    recordShot({
+      teamKey: selectedTeam,
+      shooterId: selectedPlayerId,
+      shotType,
+      result,
+      shotLocation: null,
+    })
   }
 
   function completeMadeBasket(assistPlayerId = null) {
     if (!currentMatch || !assistModal.open) return
 
-    const { teamKey, shooterId, shotType } = assistModal
+    const { teamKey, shooterId, shotType, shotLocation } = assistModal
     const team = currentMatch[teamKey]
     const lineupSnapshot = [...team.onCourt]
 
@@ -1439,6 +1651,7 @@ export default function App() {
       blockerId: null,
       points: shotType === '2PT' ? 2 : 3,
       lineupSnapshot,
+      shotLocation,
     })
 
     setCurrentMatch({
@@ -1456,29 +1669,110 @@ export default function App() {
       teamKey: '',
       shooterId: '',
       shotType: '',
+      shotLocation: null,
     })
   }
 
   function closeFoulModal() {
+    setFoulModal(createEmptyFoulModal())
+  }
+
+  function openPlayerFoulModal(teamKey, playerId) {
     setFoulModal({
-      open: false,
-      foulerTeamKey: '',
-      foulerId: '',
+      open: true,
+      step: 'type',
+      foulerTeamKey: teamKey,
+      foulerId: playerId,
+      chargedEntity: 'player',
+      foulType: '',
+      fouledPlayerId: '',
+      freeThrowCount: 0,
+      freeThrowShooterId: '',
     })
   }
 
-  function submitFoul(fouledPlayerId) {
+  function openStaffFoulModal(teamKey, chargedEntity) {
+    setFoulModal({
+      open: true,
+      step: 'type',
+      foulerTeamKey: teamKey,
+      foulerId: getCoachFoulerId(teamKey),
+      chargedEntity,
+      foulType: '',
+      fouledPlayerId: '',
+      freeThrowCount: 0,
+      freeThrowShooterId: '',
+    })
+  }
+
+  function setFoulType(foulType) {
+    setFoulModal((prev) => {
+      const nextStep = foulRequiresFouledPlayer(foulType, prev.chargedEntity)
+        ? 'target'
+        : 'shots'
+
+      return {
+        ...prev,
+        foulType,
+        fouledPlayerId: '',
+        freeThrowCount: 0,
+        freeThrowShooterId: '',
+        step: nextStep,
+      }
+    })
+  }
+
+  function chooseFoulTarget(playerId) {
+    setFoulModal((prev) => ({
+      ...prev,
+      fouledPlayerId: playerId,
+      step: 'shots',
+    }))
+  }
+
+  function startFreeThrowSeries(teamKey, shooterId, total) {
+    setFreeThrowFlow({
+      open: true,
+      step: 'attempt',
+      total,
+      current: 1,
+      teamKey,
+      shooterId,
+    })
+  }
+
+  function finalizeFoul(override = {}) {
     if (!currentMatch || !foulModal.open) return
 
-    const { foulerTeamKey, foulerId } = foulModal
+    const activeFoul = { ...foulModal, ...override }
+    const {
+      foulerTeamKey,
+      foulerId,
+      chargedEntity,
+      foulType,
+      fouledPlayerId,
+      freeThrowCount,
+      freeThrowShooterId,
+    } = activeFoul
+
+    if (!foulerTeamKey || !foulerId || !foulType) return
+
     const team = currentMatch[foulerTeamKey]
+    const shootingTeamKey = foulerTeamKey === 'home' ? 'away' : 'home'
+    const countsAsTeamFoul = foulCountsAsTeamFoul(foulType, chargedEntity)
 
     const foulEvent = createEvent({
       quarter: currentMatch.quarter,
       teamKey: foulerTeamKey,
       type: 'foul',
+      foulType,
       foulerId,
-      fouledPlayerId,
+      chargedEntity,
+      fouledPlayerId: fouledPlayerId || null,
+      freeThrowsAwarded: freeThrowCount,
+      freeThrowShooterId: freeThrowCount > 0 ? freeThrowShooterId : null,
+      countsAsTeamFoul,
+      retainsPossession: foulType === 'unsportsmanlike',
       lineupSnapshot: [...team.onCourt],
     })
 
@@ -1488,30 +1782,74 @@ export default function App() {
     }
 
     setCurrentMatch(updatedMatch)
-    flashPlayer(foulerId, 'player-foul-flash')
+    if (chargedEntity === 'player') {
+      flashPlayer(foulerId, 'player-foul-flash')
+    }
     closeFoulModal()
 
-    const teamEvents = updatedMatch.events.filter((e) => e.teamKey === foulerTeamKey)
-    const teamStats = getPlayerStatsFromEvents(team.players, teamEvents)
-    const fouls = teamStats[foulerId]?.foul || 0
-
-    if (fouls === 4) {
-      const player = findPlayerById(team.players, foulerId)
-      alert(`${formatPlayer(player)} is on 4 fouls.`)
+    if (freeThrowCount > 0 && freeThrowShooterId) {
+      startFreeThrowSeries(shootingTeamKey, freeThrowShooterId, freeThrowCount)
     }
 
-    if (fouls >= 5) {
-      const player = findPlayerById(team.players, foulerId)
-      alert(`${formatPlayer(player)} has fouled out and must be substituted.`)
+    if (chargedEntity === 'player') {
+      const teamEvents = updatedMatch.events.filter((e) => e.teamKey === foulerTeamKey)
+      const teamStats = getPlayerStatsFromEvents(team.players, teamEvents)
+      const fouls = teamStats[foulerId]?.foul || 0
 
-      if (team.onCourt.includes(foulerId)) {
-        setSubModal({
-          open: true,
-          teamKey: foulerTeamKey,
-          outgoingPlayerId: foulerId,
-        })
+      if (fouls === 4) {
+        const player = findPlayerById(team.players, foulerId)
+        alert(`${formatPlayer(player)} is on 4 fouls.`)
       }
+
+      if (fouls >= 5) {
+        const player = findPlayerById(team.players, foulerId)
+        alert(`${formatPlayer(player)} has fouled out and must be substituted.`)
+
+        if (team.onCourt.includes(foulerId)) {
+          setSubModal({
+            open: true,
+            teamKey: foulerTeamKey,
+            outgoingPlayerId: foulerId,
+          })
+        }
+      }
+
+      return
     }
+
+    const coachFouls = getCoachFoulCount(updatedMatch.events, foulerTeamKey)
+    if (coachFouls === COACH_FOUL_LIMIT - 1) {
+      alert(`${updatedMatch[foulerTeamKey].name} coach is on ${coachFouls} fouls.`)
+    }
+    if (coachFouls >= COACH_FOUL_LIMIT) {
+      alert(`${updatedMatch[foulerTeamKey].name} coach has reached ${coachFouls} fouls.`)
+    }
+  }
+
+  function chooseFoulShots(count) {
+    setFoulModal((prev) => {
+      const nextState = {
+        ...prev,
+        freeThrowCount: count,
+        freeThrowShooterId: '',
+        step: count > 0 ? 'shooter' : 'shots',
+      }
+
+      if (count === 0) {
+        window.setTimeout(() => finalizeFoul({ ...nextState, open: true }), 0)
+      }
+
+      return nextState
+    })
+  }
+
+  function chooseFoulShooter(playerId) {
+    const nextFoul = {
+      ...foulModal,
+      freeThrowShooterId: playerId,
+    }
+    setFoulModal(nextFoul)
+    finalizeFoul(nextFoul)
   }
 
   function openReboundModal() {
@@ -1808,6 +2146,30 @@ export default function App() {
     setScreen('home')
   }
 
+  async function discardLiveMatch(matchId, matchupLabel = 'this live match') {
+    const ok = window.confirm(`Discard ${matchupLabel}? This cannot be undone.`)
+    if (!ok) return
+
+    const { error } = await supabase.from('matches').delete().eq('id', matchId)
+
+    if (error) {
+      console.error('Failed to discard selected live match:', error)
+      alert('Failed to discard live match.')
+      return
+    }
+
+    setLiveMatches((prev) => prev.filter((match) => match.id !== matchId))
+
+    if (currentMatchId === matchId) {
+      setCurrentMatch(null)
+      setCurrentMatchId(null)
+      setSelectedTeam('home')
+      setSelectedPlayerId('')
+      setScreen('home')
+      setBottomPanelOpen(false)
+    }
+  }
+
   async function clearSavedMatches() {
     const ok = window.confirm('Delete all saved matches?')
     if (!ok) return
@@ -1864,41 +2226,113 @@ export default function App() {
 
     const team = currentMatch[teamKey]
     const teamEvents = currentMatch.events.filter((e) => e.teamKey === teamKey)
+    const teamColor =
+      team.color || team.players?.[0]?.teamColor || (teamKey === 'home' ? HOME_TEAM_COLOR : DEFAULT_AWAY_COLOR)
 
-    return team.onCourt.map((playerId) => {
-      const player = findPlayerById(team.players, playerId)
-      if (!player) return null
-      const teamColor = team.color || player.teamColor || (teamKey === 'home' ? HOME_TEAM_COLOR : DEFAULT_AWAY_COLOR)
+    return (
+      <>
+        <div className={`side-staff-controls ${teamKey}`}>
+          <button
+            className={`side-staff-btn ${teamKey} ${coachFoulCounts[teamKey] >= COACH_FOUL_LIMIT ? 'danger-foul' : coachFoulCounts[teamKey] === COACH_FOUL_LIMIT - 1 ? 'warn-foul' : ''}`}
+            style={{ '--team-color': teamColor }}
+            onClick={() => openStaffFoulModal(teamKey, 'coach')}
+          >
+            <span>Coach</span>
+            <strong>{coachFoulCounts[teamKey]}/{COACH_FOUL_LIMIT}</strong>
+          </button>
 
-      const s = getOnCourtStats(playerId, teamEvents)
-      const selected = selectedTeam === teamKey && selectedPlayerId === player.id
-      const foulClass =
-        s.foul >= 5 ? 'fouled-out' : s.foul === 4 ? 'danger-foul' : s.foul === 3 ? 'warn-foul' : ''
+          <button
+            className={`side-staff-btn ${teamKey}`}
+            style={{ '--team-color': teamColor }}
+            onClick={() => openStaffFoulModal(teamKey, 'bench')}
+          >
+            <span>Bench</span>
+            <strong>Technical</strong>
+          </button>
+        </div>
 
-      return (
-        <button
-          key={player.id}
-          className={`side-player ${teamKey} ${selected ? 'selected' : ''} ${foulClass} ${playerFlashMap[player.id] || ''}`}
-          style={{ '--team-color': teamColor }}
-          onClick={() => {
-            setSelectedTeam(teamKey)
-            setSelectedPlayerId(player.id)
-          }}
-        >
-          <div className="side-player-number">#{player.number}</div>
-          <div className="side-player-name">{getDisplayName(player)}</div>
-          {s.foul >= 3 && (
-            <div className={`foul-badge foul-count-${s.foul}`}>{s.foul} PF</div>
-          )}
-          <div className="side-player-mini">
-            <span>{s.pts} PTS</span>
-            <span>{s.reb} REB</span>
-            <span>{s.ast} AST</span>
-            <span>{s.foul} PF</span>
-          </div>
-        </button>
-      )
-    })
+        {team.onCourt.map((playerId) => {
+          const player = findPlayerById(team.players, playerId)
+          if (!player) return null
+
+          const s = getOnCourtStats(playerId, teamEvents)
+          const selected = selectedTeam === teamKey && selectedPlayerId === player.id
+          const foulClass =
+            s.foul >= 5 ? 'fouled-out' : s.foul === 4 ? 'danger-foul' : s.foul === 3 ? 'warn-foul' : ''
+
+          return (
+            <button
+              key={player.id}
+              className={`side-player ${teamKey} ${selected ? 'selected' : ''} ${foulClass} ${playerFlashMap[player.id] || ''}`}
+              style={{ '--team-color': teamColor }}
+              onClick={() => {
+                setSelectedTeam(teamKey)
+                setSelectedPlayerId(player.id)
+              }}
+            >
+              <div className="side-player-number">#{player.number}</div>
+              <div className="side-player-name">{getDisplayName(player)}</div>
+              {s.foul >= 3 && <div className={`foul-badge foul-count-${s.foul}`}>{s.foul} PF</div>}
+              <div className="side-player-mini">
+                <span>{s.pts} PTS</span>
+                <span>{s.reb} REB</span>
+                <span>{s.ast} AST</span>
+                <span>{s.foul} PF</span>
+              </div>
+            </button>
+          )
+        })}
+      </>
+    )
+  }
+
+  function handleCourtPointerDown(event) {
+    if (!currentMatch) return
+
+    const targetRect = event.currentTarget.getBoundingClientRect()
+    const clientX = event.clientX ?? event.nativeEvent?.clientX
+    const clientY = event.clientY ?? event.nativeEvent?.clientY
+    if (clientX == null || clientY == null) return
+
+    const location = {
+      x: Math.max(0, Math.min(100, ((clientX - targetRect.left) / targetRect.width) * 100)),
+      y: Math.max(0, Math.min(100, ((clientY - targetRect.top) / targetRect.height) * 100)),
+    }
+
+    courtPressRef.current = { location, fired: false }
+    if (courtHoldTimeoutRef.current) {
+      clearTimeout(courtHoldTimeoutRef.current)
+    }
+
+    courtHoldTimeoutRef.current = window.setTimeout(() => {
+      if (!courtPressRef.current) return
+      courtPressRef.current.fired = true
+      openCourtShotFlow('made', location)
+    }, 750)
+  }
+
+  function handleCourtPointerUp() {
+    if (!courtPressRef.current) return
+
+    if (courtHoldTimeoutRef.current) {
+      clearTimeout(courtHoldTimeoutRef.current)
+      courtHoldTimeoutRef.current = null
+    }
+
+    const press = courtPressRef.current
+    courtPressRef.current = null
+
+    if (!press.fired) {
+      openCourtShotFlow('missed', press.location)
+    }
+  }
+
+  function handleCourtPointerCancel() {
+    if (courtHoldTimeoutRef.current) {
+      clearTimeout(courtHoldTimeoutRef.current)
+      courtHoldTimeoutRef.current = null
+    }
+    courtPressRef.current = null
   }
 
   function renderSummaryBoxScore(teamName, players, statsMap) {
@@ -1992,6 +2426,42 @@ export default function App() {
 
   const foulOptions =
     foulModal.open && currentMatch ? getOnCourtOpponents(foulModal.foulerTeamKey) : []
+  const foulTypeOptions = getAllowedFoulTypes(foulModal.chargedEntity).map((type) => ({
+    id: type,
+    ...FOUL_TYPE_CONFIG[type],
+  }))
+  const foulShotOptions = foulModal.foulType
+    ? FOUL_TYPE_CONFIG[foulModal.foulType]?.freeThrows || [0]
+    : [0]
+  const foulShooterOptions =
+    foulModal.open && currentMatch ? getOnCourtOpponents(foulModal.foulerTeamKey) : []
+  const courtShotPlayerGroups = currentMatch
+    ? [
+        {
+          teamKey: 'home',
+          teamName: currentMatch.home.name,
+          players: getOnCourtPlayers('home'),
+        },
+        {
+          teamKey: 'away',
+          teamName: currentMatch.away.name,
+          players: getOnCourtPlayers('away'),
+        },
+      ]
+    : []
+  const coachFoulCounts = currentMatch
+    ? {
+        home: getCoachFoulCount(allEvents, 'home'),
+        away: getCoachFoulCount(allEvents, 'away'),
+      }
+    : { home: 0, away: 0 }
+  const halftimeTeamFouls = useMemo(
+    () => ({
+      home: getTeamFoulsByQuarter(allEvents, 1).home + getTeamFoulsByQuarter(allEvents, 2).home,
+      away: getTeamFoulsByQuarter(allEvents, 1).away + getTeamFoulsByQuarter(allEvents, 2).away,
+    }),
+    [allEvents]
+  )
 
   const turnoverStealOptions =
     turnoverModal.open && currentMatch ? getOnCourtOpponents(turnoverModal.teamKey) : []
@@ -2126,11 +2596,17 @@ export default function App() {
                       >
                         Resume Match
                       </button>
-                      {currentMatchId === match.id && (
-                        <button className="danger-outline-btn" onClick={discardCurrentMatch}>
-                          Discard
-                        </button>
-                      )}
+                      <button
+                        className="danger-outline-btn"
+                        onClick={() =>
+                          discardLiveMatch(
+                            match.id,
+                            `${match.home_team_name} vs ${match.away_team_name}`
+                          )
+                        }
+                      >
+                        Discard
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -2471,6 +2947,12 @@ export default function App() {
           <CourtLayout
             titansLogo={titansLogo}
             renderCourtPlayers={(teamKey) => renderCourtPlayers(teamKey)}
+            onCourtPointerDown={handleCourtPointerDown}
+            onCourtPointerUp={handleCourtPointerUp}
+            onCourtPointerLeave={handleCourtPointerCancel}
+            onCourtPointerCancel={handleCourtPointerCancel}
+            courtShotLocation={courtShotFlow.open ? courtShotFlow.location : null}
+            courtShotMode={courtShotFlow.open ? courtShotFlow.mode : ''}
           />
 
           <SelectedPlayerDock
@@ -2484,7 +2966,7 @@ export default function App() {
             openSubModal={openSubModal}
             setShotModal={setShotModal}
             openReboundModal={openReboundModal}
-            setFoulModal={setFoulModal}
+            openPlayerFoulModal={openPlayerFoulModal}
             setTurnoverModal={setTurnoverModal}
           />
 
@@ -2496,7 +2978,7 @@ export default function App() {
             currentMatch={currentMatch}
             undoEvent={undoEvent}
             getRunningScoreUntil={getRunningScoreUntil}
-            describeEvent={describeEvent}
+            describeEvent={describeMatchEvent}
             homeStats={homeStats}
             awayStats={awayStats}
             getEmptyStatLine={getEmptyStatLine}
@@ -2778,6 +3260,80 @@ export default function App() {
         </div>
       )}
 
+      {courtShotFlow.open && (
+        <div className="modal-overlay" onClick={closeCourtShotFlow}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-top">
+              <h3>{courtShotFlow.mode === 'made' ? 'Made Shot on Court' : 'Missed Shot on Court'}</h3>
+              <button className="modal-close" onClick={closeCourtShotFlow}>
+                x
+              </button>
+            </div>
+
+            {courtShotFlow.step === 'shooter' && (
+              <>
+                <div className="modal-subtext">
+                  {courtShotFlow.mode === 'made'
+                    ? 'Long press detected. Choose the player who made the shot.'
+                    : 'Tap detected. Choose the player who missed the shot.'}
+                </div>
+
+                <div className="court-shot-team-list">
+                  {courtShotPlayerGroups.map((group) => (
+                    <div key={group.teamKey} className="court-shot-team-group">
+                      <div className="picker-title">{group.teamName}</div>
+                      <div className="bench-list">
+                        {group.players.map((player) => (
+                          <button
+                            key={player.id}
+                            className="bench-item"
+                            onClick={() => chooseCourtShotShooter(group.teamKey, player.id)}
+                          >
+                            <div className="avatar">#{player.number}</div>
+                            <div className="bench-name">{formatPlayer(player)}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {courtShotFlow.step === 'shotType' && (
+              <>
+                <div className="modal-subtext">
+                  {courtShotFlow.mode === 'made'
+                    ? 'What shot was made from that spot?'
+                    : 'What shot was missed from that spot?'}
+                </div>
+
+                <div className="pill-row">
+                  {['2PT', '3PT'].map((type) => (
+                    <button
+                      key={type}
+                      className="pill-btn"
+                      onClick={() => {
+                        recordShot({
+                          teamKey: courtShotFlow.shooterTeamKey,
+                          shooterId: courtShotFlow.shooterId,
+                          shotType: type,
+                          result: courtShotFlow.mode === 'made' ? 'made' : 'missed',
+                          shotLocation: courtShotFlow.location,
+                        })
+                        closeCourtShotFlow()
+                      }}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {freeThrowFlow.open && (
         <div className="modal-overlay" onClick={closeFreeThrowFlow}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
@@ -2827,14 +3383,18 @@ export default function App() {
       {assistModal.open && (
         <div
           className="modal-overlay"
-          onClick={() => setAssistModal({ open: false, teamKey: '', shooterId: '', shotType: '' })}
+          onClick={() =>
+            setAssistModal({ open: false, teamKey: '', shooterId: '', shotType: '', shotLocation: null })
+          }
         >
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-top">
               <h3>Assist?</h3>
               <button
                 className="modal-close"
-                onClick={() => setAssistModal({ open: false, teamKey: '', shooterId: '', shotType: '' })}
+                onClick={() =>
+                  setAssistModal({ open: false, teamKey: '', shooterId: '', shotType: '', shotLocation: null })
+                }
               >
                 ✕
               </button>
@@ -2868,6 +3428,106 @@ export default function App() {
       )}
 
       {foulModal.open && (
+        <div className="modal-overlay" onClick={closeFoulModal}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-top">
+              <h3>
+                {foulModal.step === 'type' && 'Foul Type'}
+                {foulModal.step === 'target' && 'Who Got Fouled?'}
+                {foulModal.step === 'shots' && 'Free Throws Awarded'}
+                {foulModal.step === 'shooter' && 'Who Shoots the Free Throws?'}
+              </h3>
+              <button className="modal-close" onClick={closeFoulModal}>
+                x
+              </button>
+            </div>
+
+            {foulModal.step === 'type' && (
+              <>
+                <div className="modal-subtext">
+                  {foulModal.chargedEntity === 'player'
+                    ? 'Choose the foul type, then set any free throws from the same flow.'
+                    : `This will be logged as a ${
+                        foulModal.chargedEntity === 'bench' ? 'bench technical charged to the coach' : 'coach technical'
+                      }.`}
+                </div>
+                <div className="foul-type-list">
+                  {foulTypeOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      className="foul-type-btn"
+                      onClick={() => setFoulType(option.id)}
+                    >
+                      <div className="foul-type-name">{option.label}</div>
+                      <div className="foul-type-desc">{option.description}</div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {foulModal.step === 'target' && (
+              <>
+                <div className="modal-subtext">Choose the player who was fouled.</div>
+                <div className="bench-list">
+                  {foulOptions.map((player) => (
+                    <button
+                      key={player.id}
+                      className="bench-item"
+                      onClick={() => chooseFoulTarget(player.id)}
+                    >
+                      <div className="avatar">#{player.number}</div>
+                      <div className="bench-name">{formatPlayer(player)}</div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {foulModal.step === 'shots' && (
+              <>
+                <div className="modal-subtext">
+                  {FOUL_TYPE_CONFIG[foulModal.foulType]?.label || 'Foul'}: how many free throws were awarded?
+                </div>
+                <div className="pill-row ft-step-actions">
+                  {foulShotOptions.map((count) => (
+                    <button
+                      key={count}
+                      className="pill-btn"
+                      onClick={() => chooseFoulShots(count)}
+                    >
+                      {count === 0 ? 'No Free Throws' : `${count} FT${count > 1 ? 's' : ''}`}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {foulModal.step === 'shooter' && (
+              <>
+                <div className="modal-subtext">
+                  Choose the player taking {foulModal.freeThrowCount} free throw
+                  {foulModal.freeThrowCount > 1 ? 's' : ''}.
+                </div>
+                <div className="bench-list">
+                  {foulShooterOptions.map((player) => (
+                    <button
+                      key={player.id}
+                      className="bench-item"
+                      onClick={() => chooseFoulShooter(player.id)}
+                    >
+                      <div className="avatar">#{player.number}</div>
+                      <div className="bench-name">{formatPlayer(player)}</div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {false && foulModal.open && (
         <div className="modal-overlay" onClick={closeFoulModal}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-top">
@@ -3089,7 +3749,7 @@ export default function App() {
                 <div className="summary-stats-grid">
                   <div>
                     <span className="stat-label">Fouls:</span>{' '}
-                    {isHalftimeSummary ? halftimeTotals.home.fouls : currentQuarterFouls.home}
+                    {isHalftimeSummary ? halftimeTeamFouls.home : currentQuarterFouls.home}
                   </div>
                   <div>
                     <span className="stat-label">Reb:</span>{' '}
@@ -3113,7 +3773,7 @@ export default function App() {
                 <div className="summary-stats-grid">
                   <div>
                     <span className="stat-label">Fouls:</span>{' '}
-                    {isHalftimeSummary ? halftimeTotals.away.fouls : currentQuarterFouls.away}
+                    {isHalftimeSummary ? halftimeTeamFouls.away : currentQuarterFouls.away}
                   </div>
                   <div>
                     <span className="stat-label">Reb:</span>{' '}

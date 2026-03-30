@@ -15,7 +15,7 @@ export default function SelectedPlayerDock({
   openSubModal,
   setShotModal,
   openReboundModal,
-  setFoulModal,
+  openPlayerFoulModal,
   setTurnoverModal,
 }) {
   return (
@@ -112,13 +112,7 @@ export default function SelectedPlayerDock({
 
         <button
           className="dock-action foul"
-          onClick={() =>
-            setFoulModal({
-              open: true,
-              foulerTeamKey: selectedTeam,
-              foulerId: selectedPlayer?.id || '',
-            })
-          }
+          onClick={() => selectedPlayer && openPlayerFoulModal(selectedTeam, selectedPlayer.id)}
           disabled={!selectedPlayer}
         >
           Foul
