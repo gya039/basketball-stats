@@ -7,13 +7,16 @@ export default function CourtLayout({
   onCourtPointerCancel,
   courtShotLocation,
   courtShotMode,
+  courtShotStep,
 }) {
   return (
     <div className="live-main-layout">
       <div className="side-team-column left">{renderCourtPlayers('home')}</div>
 
       <div
-        className={`court-stage ${courtShotMode ? `court-shot-mode-${courtShotMode}` : ''}`}
+        className={`court-stage ${courtShotMode ? `court-shot-mode-${courtShotMode}` : ''} ${
+          courtShotStep === 'awaitSelection' ? 'court-awaiting-selection' : ''
+        }`}
         onPointerDown={onCourtPointerDown}
         onPointerUp={onCourtPointerUp}
         onPointerLeave={onCourtPointerLeave}
@@ -23,6 +26,14 @@ export default function CourtLayout({
           <img src={titansLogo} alt="Titans logo" />
         </div>
         <div className="center-court-visual" />
+        {courtShotStep === 'awaitSelection' && (
+          <div
+            className={`court-shot-dim-overlay ${
+              courtShotMode === 'made' ? 'made' : 'missed'
+            }`}
+            aria-hidden="true"
+          />
+        )}
         {courtShotLocation && (
           <div
             className={`court-shot-marker ${courtShotMode}`}

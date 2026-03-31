@@ -13,16 +13,15 @@ export default function SelectedPlayerDock({
   selectedStats,
   titansJerseyBack,
   openSubModal,
-  setShotModal,
-  openReboundModal,
-  openPlayerFoulModal,
-  setTurnoverModal,
+  beginActionSelection,
+  openPlayerHeatMap,
 }) {
   return (
     <div className="selected-player-dock">
       <div
         className="selected-main-card"
         style={{
+          '--selected-accent': selectedTeamColor,
           borderColor: `${selectedTeamColor}55`,
           boxShadow: `inset 0 0 0 1px ${selectedTeamColor}22`,
         }}
@@ -33,6 +32,8 @@ export default function SelectedPlayerDock({
         >
           {selectedTeam === 'home' ? currentMatch.home.name : currentMatch.away.name}
         </div>
+
+        <div className="selected-section-label">On Floor Focus</div>
 
         <div className="selected-player-header">
           {selectedPlayer && (
@@ -56,37 +57,47 @@ export default function SelectedPlayerDock({
 
           <div className="selected-player-info">
             <div className="selected-player-meta-row">
-              <div className="selected-player-name-wrap">
-                <div className="selected-player-name">
-                  {selectedPlayer ? selectedPlayer.name : 'Select a player'}
+              <div className="selected-player-meta-main">
+                <div className="selected-player-name-wrap">
+                  <div className="selected-player-name">
+                    {selectedPlayer ? selectedPlayer.name : 'Select a player'}
+                  </div>
+
+                  {selectedPlayer && (
+                    <div className="selected-player-subline">
+                      #{selectedPlayer.number} -{' '}
+                      {selectedTeam === 'home' ? currentMatch.home.name : currentMatch.away.name}
+                    </div>
+                  )}
                 </div>
 
                 {selectedPlayer && (
-                  <div className="selected-player-subline">
-                    #{selectedPlayer.number} -{' '}
-                    {selectedTeam === 'home' ? currentMatch.home.name : currentMatch.away.name}
+                  <div className="selected-stat-inline">
+                    <span>{selectedStats.pts} PTS</span>
+                    <span>{selectedStats.reb} REB</span>
+                    <span>{selectedStats.ast} AST</span>
+                    <span>{selectedStats.foul} PF</span>
                   </div>
                 )}
               </div>
-
-              {selectedPlayer && (
-                <div className="selected-stat-grid">
-                  <span>{selectedStats.pts} PTS</span>
-                  <span>{selectedStats.reb} REB</span>
-                  <span>{selectedStats.ast} AST</span>
-                  <span>{selectedStats.foul} PF</span>
-                </div>
-              )}
             </div>
 
             <div className="selected-tools-row">
               {selectedPlayer && (
-                <button
-                  className="tiny-override-btn"
-                  onClick={() => openSubModal(selectedTeam, selectedPlayer.id)}
-                >
-                  Sub Player
-                </button>
+                <>
+                  <button
+                    className="tiny-override-btn"
+                    onClick={() => openSubModal(selectedTeam, selectedPlayer.id)}
+                  >
+                    Sub Player
+                  </button>
+                  <button
+                    className="tiny-override-btn"
+                    onClick={() => openPlayerHeatMap(selectedTeam, selectedPlayer)}
+                  >
+                    Player Heat Map
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -94,40 +105,25 @@ export default function SelectedPlayerDock({
       </div>
 
       <div className="action-dock-grid">
-        <button
-          className="dock-action shot"
-          onClick={() => setShotModal({ open: true, shotType: '', result: '' })}
-          disabled={!selectedPlayer}
-        >
-          Shot
-        </button>
+        <div className="action-dock-label">Quick Actions</div>
 
         <button
           className="dock-action rebound"
-          onClick={openReboundModal}
-          disabled={!selectedPlayer}
+          onClick={() => beginActionSelection('rebound')}
         >
           Rebound
         </button>
 
         <button
           className="dock-action foul"
-          onClick={() => selectedPlayer && openPlayerFoulModal(selectedTeam, selectedPlayer.id)}
-          disabled={!selectedPlayer}
+          onClick={() => beginActionSelection('foul')}
         >
           Foul
         </button>
 
         <button
           className="dock-action turnover"
-          onClick={() =>
-            setTurnoverModal({
-              open: true,
-              teamKey: selectedTeam,
-              playerId: selectedPlayer?.id || '',
-            })
-          }
-          disabled={!selectedPlayer}
+          onClick={() => beginActionSelection('turnover')}
         >
           Turnover
         </button>

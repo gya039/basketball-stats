@@ -13,13 +13,19 @@ const STORAGE_KEYS = {
   homeTeam: 'basketball_home_team_v11',
   savedMatches: 'basketball_saved_matches_v11',
   currentMatch: 'basketball_current_match_v11',
+  homeCoachName: 'basketball_home_coach_name_v11',
 }
 
-const HOME_TEAM_COLOR = '#2f6df6'
-const HOME_TEAM_SECONDARY_COLOR = '#93c5fd'
+const HOME_TEAM_COLOR = '#7b1e2b'
+const HOME_TEAM_SECONDARY_COLOR = '#c8a24a'
 const DEFAULT_AWAY_COLOR = '#ef4444'
 const DEFAULT_AWAY_SECONDARY_COLOR = '#fca5a5'
+const DEFAULT_HOME_COACH_NAME = ''
+const DEFAULT_AWAY_COACH_NAME = ''
 const COACH_FOUL_LIMIT = 3
+const COURT_LEFT_BASKET = { x: 6.5, y: 50 }
+const COURT_RIGHT_BASKET = { x: 93.5, y: 50 }
+const THREE_POINT_SUGGESTION_DISTANCE = 18.5
 const FOUL_TYPE_CONFIG = {
   personal: {
     label: 'Personal',
@@ -49,6 +55,41 @@ const FOUL_TYPE_CONFIG = {
   },
 }
 
+const TURNOVER_CATEGORY_CONFIG = {
+  passing: {
+    label: 'Passing',
+    description: 'Bad pass, intercepted pass, or a pass thrown away.',
+    asksSteal: true,
+  },
+  ballHandling: {
+    label: 'Ball Handling',
+    description: 'Lost ball, dribble control issue, or stripped while handling.',
+    asksSteal: true,
+  },
+  violation: {
+    label: 'Violation',
+    description: 'Travelling, double dribble, time violations, backcourt, or out of bounds.',
+    asksSteal: false,
+  },
+  offensiveFoul: {
+    label: 'Offensive Foul',
+    description: 'Player control foul resulting in a turnover.',
+    asksSteal: false,
+  },
+}
+
+const TURNOVER_VIOLATION_OPTIONS = [
+  { id: 'travel', label: 'Travel' },
+  { id: 'doubleDribble', label: 'Double Dribble' },
+  { id: 'threeSeconds', label: '3 Seconds' },
+  { id: 'fiveSeconds', label: '5 Seconds' },
+  { id: 'eightSeconds', label: '8 Seconds' },
+  { id: 'twentyFourSeconds', label: '24 Seconds' },
+  { id: 'backcourt', label: 'Backcourt' },
+  { id: 'outOfBounds', label: 'Out Of Bounds' },
+  { id: 'otherViolation', label: 'Other Violation' },
+]
+
 function createEmptyFoulModal() {
   return {
     open: false,
@@ -56,6 +97,7 @@ function createEmptyFoulModal() {
     foulerTeamKey: '',
     foulerId: '',
     chargedEntity: 'player',
+    actorScope: 'all',
     foulType: '',
     fouledPlayerId: '',
     freeThrowCount: 0,
@@ -65,6 +107,10 @@ function createEmptyFoulModal() {
 
 function getCoachFoulerId(teamKey) {
   return `${teamKey}_coach_foul`
+}
+
+function getCoachDisplayName(name) {
+  return name?.trim() || 'Coach not set'
 }
 
 function getAllowedFoulTypes(chargedEntity) {
@@ -136,6 +182,45 @@ function getDisplayName(player) {
   const parts = player.name.trim().split(' ').filter(Boolean)
   if (parts.length <= 1) return player.name
   return `${parts[0]} ${parts[parts.length - 1]}`
+}
+
+function getLastName(player) {
+  if (!player?.name) return ''
+  const parts = player.name.trim().split(/\s+/).filter(Boolean)
+  return parts[parts.length - 1] || player.name
+}
+
+function getAttackingSide(teamKey, quarter) {
+  const homeSide = quarter >= 3 ? 'left' : 'right'
+  if (teamKey === 'home') return homeSide
+  return homeSide === 'left' ? 'right' : 'left'
+}
+
+function getBasketTarget(teamKey, quarter) {
+  return getAttackingSide(teamKey, quarter) === 'left'
+    ? COURT_LEFT_BASKET
+    : COURT_RIGHT_BASKET
+}
+
+function getSuggestedTeamKeyFromLocation(location, quarter) {
+  if (!location) return 'home'
+
+  if (location.x <= 50) {
+    return getAttackingSide('home', quarter) === 'left' ? 'home' : 'away'
+  }
+
+  return getAttackingSide('home', quarter) === 'right' ? 'home' : 'away'
+}
+
+function getSuggestedShotTypeFromLocation(location, teamKey, quarter) {
+  if (!location) return '2PT'
+
+  const basket = getBasketTarget(teamKey, quarter)
+  const dx = location.x - basket.x
+  const dy = (location.y - basket.y) * 1.28
+  const distance = Math.hypot(dx, dy)
+
+  return distance >= THREE_POINT_SUGGESTION_DISTANCE ? '3PT' : '2PT'
 }
 
 function findPlayerById(players, id) {
@@ -360,6 +445,105 @@ function getTeamTotals(players, events) {
       fouls: 0,
     }
   )
+}
+
+function addStatLine(target, source) {
+  target.pts += source.pts
+  target.reb += source.reb
+  target.ast += source.ast
+  target.stl += source.stl
+  target.blk += source.blk
+  target.tov += source.tov
+  target.foul += source.foul
+}
+
+function getLeaderBy(players, key) {
+  if (!players.length) return null
+  return [...players].sort((a, b) => {
+    if (b[key] !== a[key]) return b[key] - a[key]
+    return a.name.localeCompare(b.name)
+  })[0]
+}
+
+function getSeasonSummary(matches) {
+  if (!matches.length) {
+    return {
+      totals: {
+        games: 0,
+        wins: 0,
+        losses: 0,
+        points: 0,
+        rebounds: 0,
+        assists: 0,
+      },
+      players: [],
+      leaders: {},
+    }
+  }
+
+  const playerTotals = new Map()
+  const totals = {
+    games: matches.length,
+    wins: 0,
+    losses: 0,
+    points: 0,
+    rebounds: 0,
+    assists: 0,
+  }
+
+  matches.forEach((match) => {
+    const homeEvents = match.events.filter((evt) => evt.teamKey === 'home')
+    const statsMap = getPlayerStatsFromEvents(match.home.players, homeEvents)
+
+    totals.points += match.finalScore?.home || 0
+    totals.wins += (match.finalScore?.home || 0) > (match.finalScore?.away || 0) ? 1 : 0
+    totals.losses += (match.finalScore?.home || 0) < (match.finalScore?.away || 0) ? 1 : 0
+
+    match.home.players.forEach((player) => {
+      const line = statsMap[player.id] || getEmptyStatLine()
+      totals.rebounds += line.reb
+      totals.assists += line.ast
+
+      if (!playerTotals.has(player.id)) {
+        playerTotals.set(player.id, {
+          id: player.id,
+          name: player.name,
+          number: player.number,
+          games: 0,
+          pts: 0,
+          reb: 0,
+          ast: 0,
+          stl: 0,
+          blk: 0,
+          tov: 0,
+          foul: 0,
+          mvpScore: 0,
+        })
+      }
+
+      const aggregate = playerTotals.get(player.id)
+      aggregate.games += 1
+      addStatLine(aggregate, line)
+    })
+  })
+
+  const players = [...playerTotals.values()].map((player) => ({
+    ...player,
+    mvpScore: Math.round((player.pts + player.reb * 1.2 + player.ast * 1.5 + player.stl * 3 + player.blk * 3 - player.tov) * 10) / 10,
+  }))
+
+  return {
+    totals,
+    players,
+    leaders: {
+      pts: getLeaderBy(players, 'pts'),
+      reb: getLeaderBy(players, 'reb'),
+      ast: getLeaderBy(players, 'ast'),
+      stl: getLeaderBy(players, 'stl'),
+      blk: getLeaderBy(players, 'blk'),
+      mvpScore: getLeaderBy(players, 'mvpScore'),
+    },
+  }
 }
 
 function getQuarterScore(events, quarter) {
@@ -593,6 +777,7 @@ function mapSupabaseMatchRow(row, events = []) {
     },
     home: {
       name: row.home_team_name,
+      coachName: row.home_coach_name || DEFAULT_HOME_COACH_NAME,
       color: homeColor,
       secondaryColor: homeSecondaryColor,
       players: row.home_players || [],
@@ -600,6 +785,7 @@ function mapSupabaseMatchRow(row, events = []) {
     },
     away: {
       name: row.away_team_name,
+      coachName: row.away_coach_name || DEFAULT_AWAY_COACH_NAME,
       color: awayColor,
       secondaryColor: awaySecondaryColor,
       players: row.away_players || [],
@@ -622,6 +808,7 @@ export default function App() {
 
   const [homeTeam, setHomeTeam] = useState({
     name: 'Loading team...',
+    coachName: DEFAULT_HOME_COACH_NAME,
     color: HOME_TEAM_COLOR,
     secondaryColor: HOME_TEAM_SECONDARY_COLOR,
     players: [],
@@ -637,6 +824,7 @@ export default function App() {
 
   const [newMatch, setNewMatch] = useState({
     opponentName: '',
+    opponentCoachName: '',
     opponentPlayers: [
       createPlayer('Opponent 1', '1'),
       createPlayer('Opponent 2', '2'),
@@ -664,6 +852,7 @@ export default function App() {
   const [selectedTeam, setSelectedTeam] = useState('home')
   const [selectedPlayerId, setSelectedPlayerId] = useState('')
   const [panelView, setPanelView] = useState('log')
+  const [shotMapPlayerFilter, setShotMapPlayerFilter] = useState(null)
 
   const [subModal, setSubModal] = useState({
     open: false,
@@ -693,12 +882,16 @@ export default function App() {
     mode: 'choice',
     reboundType: '',
     pickerTeamKey: '',
+    playerId: '',
   })
 
   const [turnoverModal, setTurnoverModal] = useState({
     open: false,
+    step: 'category',
     teamKey: '',
     playerId: '',
+    category: '',
+    violationType: '',
   })
 
   const [fixAssistModal, setFixAssistModal] = useState({
@@ -722,11 +915,27 @@ export default function App() {
     shooterId: '',
     shotType: '',
     location: null,
+    suggestedTeamKey: 'home',
+    suggestedShotType: '2PT',
+  })
+  const [courtReboundPrompt, setCourtReboundPrompt] = useState({
+    open: false,
+    relatedShotEventId: '',
+  })
+  const [pendingActionSelection, setPendingActionSelection] = useState({
+    open: false,
+    action: '',
+  })
+  const [coachBenchModal, setCoachBenchModal] = useState({
+    open: false,
+    teamKey: '',
   })
 
   const [quarterSummaryOpen, setQuarterSummaryOpen] = useState(false)
+  const [quarterSummaryView, setQuarterSummaryView] = useState('summary')
   const [pullRefreshLabel, setPullRefreshLabel] = useState('')
   const [isRefreshingMenuData, setIsRefreshingMenuData] = useState(false)
+  const [isExportingData, setIsExportingData] = useState(false)
 
   async function loadHomeTeamFromSupabase() {
     const { data: teamRows, error: teamError } = await supabase
@@ -761,6 +970,7 @@ export default function App() {
     setHomeTeamId(teamRow.id)
     setHomeTeam({
       name: teamRow.name,
+      coachName: teamRow.coach_name || loadJSON(STORAGE_KEYS.homeCoachName, DEFAULT_HOME_COACH_NAME),
       color: teamRow.primary_color || HOME_TEAM_COLOR,
       secondaryColor: teamRow.secondary_color || HOME_TEAM_SECONDARY_COLOR,
       players: playerRows || [],
@@ -887,6 +1097,108 @@ export default function App() {
     }
   }
 
+  async function exportClubData() {
+    setIsExportingData(true)
+
+    try {
+      const [{ data: teams, error: teamsError }, { data: players, error: playersError }, { data: matches, error: matchesError }, { data: matchEvents, error: eventsError }] =
+        await Promise.all([
+          supabase.from('teams').select('*').order('created_at', { ascending: true }),
+          supabase.from('players').select('*').order('created_at', { ascending: true }),
+          supabase.from('matches').select('*').order('created_at', { ascending: true }),
+          supabase.from('match_events').select('*').order('created_at', { ascending: true }),
+        ])
+
+      if (teamsError || playersError || matchesError || eventsError) {
+        console.error('Failed to export club data:', teamsError || playersError || matchesError || eventsError)
+        alert('Failed to export club data.')
+        return
+      }
+
+      const exportPayload = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        club: {
+          teamName: homeTeam.name,
+          coachName: homeTeam.coachName || '',
+        },
+        counts: {
+          teams: teams?.length || 0,
+          players: players?.length || 0,
+          matches: matches?.length || 0,
+          matchEvents: matchEvents?.length || 0,
+        },
+        tables: {
+          teams: teams || [],
+          players: players || [],
+          matches: matches || [],
+          match_events: matchEvents || [],
+        },
+      }
+
+      const blob = new Blob([JSON.stringify(exportPayload, null, 2)], {
+        type: 'application/json',
+      })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `basketball-club-backup-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } finally {
+      setIsExportingData(false)
+    }
+  }
+
+  function exportSeasonStatsCsv() {
+    const players = seasonSummary.players
+
+    if (!players.length) {
+      alert('No completed match stats available to export yet.')
+      return
+    }
+
+    const rows = [
+      ['Number', 'Player', 'Games', 'Points', 'Rebounds', 'Assists', 'Steals', 'Blocks', 'Turnovers', 'Fouls', 'MVP Score'],
+      ...players
+        .slice()
+        .sort((a, b) => b.pts - a.pts || a.name.localeCompare(b.name))
+        .map((player) => [
+          player.number,
+          player.name,
+          player.games,
+          player.pts,
+          player.reb,
+          player.ast,
+          player.stl,
+          player.blk,
+          player.tov,
+          player.foul,
+          player.mvpScore,
+        ]),
+    ]
+
+    const csv = rows
+      .map((row) =>
+        row
+          .map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`)
+          .join(',')
+      )
+      .join('\n')
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `basketball-season-stats-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+  }
+
   useEffect(() => {
     async function loadAppData() {
       const teamRow = await loadHomeTeamFromSupabase()
@@ -921,26 +1233,37 @@ export default function App() {
         away: getTeamTotals(currentMatch.away.players, liveAwayEvents).points,
       }
 
-      const { error: matchError } = await supabase
+      const baseUpdatePayload = {
+        home_team_id: homeTeamId,
+        home_team_name: currentMatch.home.name,
+        away_team_name: currentMatch.away.name,
+        date: currentMatch.date || '',
+        venue: currentMatch.venue || '',
+        quarter: currentMatch.quarter,
+        status: 'live',
+        final_score_home: liveScore.home,
+        final_score_away: liveScore.away,
+        quarter_scores: getAllQuarterScores(currentMatch.events),
+        home_players: currentMatch.home.players,
+        away_players: currentMatch.away.players,
+        home_on_court: currentMatch.home.onCourt,
+        away_on_court: currentMatch.away.onCourt,
+        updated_at: new Date().toISOString(),
+      }
+
+      let { error: matchError } = await supabase
         .from('matches')
         .update({
-          home_team_id: homeTeamId,
-          home_team_name: currentMatch.home.name,
-          away_team_name: currentMatch.away.name,
-          date: currentMatch.date || '',
-          venue: currentMatch.venue || '',
-          quarter: currentMatch.quarter,
-          status: 'live',
-          final_score_home: liveScore.home,
-          final_score_away: liveScore.away,
-          quarter_scores: getAllQuarterScores(currentMatch.events),
-          home_players: currentMatch.home.players,
-          away_players: currentMatch.away.players,
-          home_on_court: currentMatch.home.onCourt,
-          away_on_court: currentMatch.away.onCourt,
-          updated_at: new Date().toISOString(),
+          ...baseUpdatePayload,
+          home_coach_name: currentMatch.home.coachName || '',
+          away_coach_name: currentMatch.away.coachName || '',
         })
         .eq('id', currentMatchId)
+
+      if (matchError) {
+        const retry = await supabase.from('matches').update(baseUpdatePayload).eq('id', currentMatchId)
+        matchError = retry.error
+      }
 
       if (matchError) {
         console.error('Failed to sync live match:', matchError)
@@ -1151,6 +1474,7 @@ export default function App() {
   function resetNewMatchForm() {
     setNewMatch({
       opponentName: '',
+      opponentCoachName: '',
       opponentPlayers: [
         createPlayer('Opponent 1', '1'),
         createPlayer('Opponent 2', '2'),
@@ -1346,6 +1670,7 @@ export default function App() {
       quarter: 1,
       home: {
         name: homeTeam.name.trim() || 'Home Team',
+        coachName: homeTeam.coachName?.trim() || DEFAULT_HOME_COACH_NAME,
         color: homeTeam.color || HOME_TEAM_COLOR,
         secondaryColor: homeTeam.secondaryColor || HOME_TEAM_SECONDARY_COLOR,
         players: homePlayersForMatch,
@@ -1353,6 +1678,7 @@ export default function App() {
       },
       away: {
         name: newMatch.opponentName.trim() || 'Opponent',
+        coachName: newMatch.opponentCoachName.trim() || DEFAULT_AWAY_COACH_NAME,
         color: newMatch.opponentColor || DEFAULT_AWAY_COLOR,
         secondaryColor:
           newMatch.opponentSecondaryColor || DEFAULT_AWAY_SECONDARY_COLOR,
@@ -1362,31 +1688,43 @@ export default function App() {
       events: [],
     }
 
-    const { data: insertedMatch, error } = await supabase
+    const baseInsertPayload = {
+      home_team_id: homeTeamId,
+      home_team_name: match.home.name,
+      away_team_name: match.away.name,
+      date: match.date,
+      venue: match.venue,
+      quarter: match.quarter,
+      status: 'live',
+      final_score_home: 0,
+      final_score_away: 0,
+      quarter_scores: {
+        1: { home: 0, away: 0 },
+        2: { home: 0, away: 0 },
+        3: { home: 0, away: 0 },
+        4: { home: 0, away: 0 },
+      },
+      home_players: match.home.players,
+      away_players: match.away.players,
+      home_on_court: match.home.onCourt,
+      away_on_court: match.away.onCourt,
+    }
+
+    let { data: insertedMatch, error } = await supabase
       .from('matches')
       .insert({
-        home_team_id: homeTeamId,
-        home_team_name: match.home.name,
-        away_team_name: match.away.name,
-        date: match.date,
-        venue: match.venue,
-        quarter: match.quarter,
-        status: 'live',
-        final_score_home: 0,
-        final_score_away: 0,
-        quarter_scores: {
-          1: { home: 0, away: 0 },
-          2: { home: 0, away: 0 },
-          3: { home: 0, away: 0 },
-          4: { home: 0, away: 0 },
-        },
-        home_players: match.home.players,
-        away_players: match.away.players,
-        home_on_court: match.home.onCourt,
-        away_on_court: match.away.onCourt,
+        ...baseInsertPayload,
+        home_coach_name: match.home.coachName,
+        away_coach_name: match.away.coachName,
       })
       .select('id')
       .single()
+
+    if (error) {
+      const retry = await supabase.from('matches').insert(baseInsertPayload).select('id').single()
+      insertedMatch = retry.data
+      error = retry.error
+    }
 
     if (error) {
       console.error('Failed to create live match:', error)
@@ -1452,36 +1790,165 @@ export default function App() {
   function closeCourtShotFlow() {
     setCourtShotFlow({
       open: false,
-      step: 'shooter',
+      step: 'idle',
       mode: 'missed',
       shooterTeamKey: '',
       shooterId: '',
       shotType: '',
       location: null,
+      suggestedTeamKey: 'home',
+      suggestedShotType: '2PT',
+    })
+  }
+
+  function closeCourtReboundPrompt() {
+    setCourtReboundPrompt({
+      open: false,
+      relatedShotEventId: '',
+    })
+  }
+
+  function closePendingActionSelection() {
+    setPendingActionSelection({
+      open: false,
+      action: '',
+    })
+  }
+
+  function openCoachBenchModal(teamKey) {
+    setCoachBenchModal({
+      open: true,
+      teamKey,
+    })
+  }
+
+  function closeCoachBenchModal() {
+    setCoachBenchModal({
+      open: false,
+      teamKey: '',
+    })
+  }
+
+  function beginActionSelection(action) {
+    closeCourtShotFlow()
+    setPendingActionSelection({
+      open: true,
+      action,
     })
   }
 
   function openCourtShotFlow(mode, location) {
     if (!currentMatch) return
 
+    const suggestedTeamKey = getSuggestedTeamKeyFromLocation(location, currentMatch.quarter)
+    const suggestedShotType = getSuggestedShotTypeFromLocation(
+      location,
+      suggestedTeamKey,
+      currentMatch.quarter
+    )
+
     setCourtShotFlow({
       open: true,
-      step: 'shooter',
+      step: mode === 'made' ? 'shotType' : 'awaitSelection',
       mode,
       shooterTeamKey: '',
       shooterId: '',
-      shotType: '',
+      shotType: mode === 'made' ? suggestedShotType : '',
       location,
+      suggestedTeamKey,
+      suggestedShotType,
     })
   }
 
-  function chooseCourtShotShooter(teamKey, shooterId) {
+  function chooseCourtShotType(shotType) {
+    if (courtShotFlow.mode === 'missed' && courtShotFlow.shooterId && courtShotFlow.shooterTeamKey) {
+      recordShot({
+        teamKey: courtShotFlow.shooterTeamKey,
+        shooterId: courtShotFlow.shooterId,
+        shotType,
+        result: 'missed',
+        shotLocation: courtShotFlow.location,
+        promptForRebound: true,
+      })
+      closeCourtShotFlow()
+      return
+    }
+
     setCourtShotFlow((prev) => ({
       ...prev,
-      shooterTeamKey: teamKey,
-      shooterId,
-      step: 'shotType',
+      shotType,
+      step: 'awaitSelection',
     }))
+  }
+
+  function chooseCourtShotShooter(teamKey, shooterId) {
+    if (!courtShotFlow.open) return
+    if (courtShotFlow.step === 'awaitSelection' && teamKey !== courtShotFlow.suggestedTeamKey) return
+
+    if (courtShotFlow.mode === 'missed' && !courtShotFlow.shotType) {
+      setCourtShotFlow((prev) => ({
+        ...prev,
+        shooterTeamKey: teamKey,
+        shooterId,
+        shotType: prev.suggestedShotType,
+        step: 'shotType',
+      }))
+      return
+    }
+
+    recordShot({
+      teamKey,
+      shooterId,
+      shotType: courtShotFlow.shotType,
+      result: courtShotFlow.mode === 'made' ? 'made' : 'missed',
+      shotLocation: courtShotFlow.location,
+      promptForRebound: courtShotFlow.mode === 'missed',
+    })
+    closeCourtShotFlow()
+  }
+
+  function handlePendingActionPlayer(teamKey, playerId) {
+    if (!pendingActionSelection.open) return
+
+    setSelectedTeam(teamKey)
+    setSelectedPlayerId(playerId)
+
+    if (pendingActionSelection.action === 'shot') {
+      closePendingActionSelection()
+      setShotModal({ open: true, shotType: '', result: '' })
+      return
+    }
+
+    if (pendingActionSelection.action === 'foul') {
+      closePendingActionSelection()
+      openTeamFoulModal(teamKey, playerId)
+      return
+    }
+
+    if (pendingActionSelection.action === 'turnover') {
+      closePendingActionSelection()
+      setTurnoverModal({
+        open: true,
+        step: 'category',
+        teamKey,
+        playerId,
+        category: '',
+        violationType: '',
+      })
+      return
+    }
+
+    if (pendingActionSelection.action === 'rebound') {
+      closePendingActionSelection()
+      setReboundModal({
+        open: true,
+        relatedShotEventId: '',
+        mode: 'choice',
+        reboundType: '',
+        pickerTeamKey: teamKey,
+        playerId,
+      })
+    }
   }
 
   function closeFreeThrowFlow() {
@@ -1544,7 +2011,7 @@ export default function App() {
     }
   }
 
-  function recordShot({ teamKey, shooterId, shotType, result, shotLocation = null }) {
+  function recordShot({ teamKey, shooterId, shotType, result, shotLocation = null, promptForRebound = false }) {
     if (!currentMatch || !teamKey || !shooterId || !shotType) return
 
     const team = currentMatch[teamKey]
@@ -1605,6 +2072,13 @@ export default function App() {
 
     if (result === 'missed') {
       flashPlayer(shooterId, 'player-missed')
+      if (promptForRebound) {
+        setCourtReboundPrompt({
+          open: true,
+          relatedShotEventId: shotEvent.id,
+        })
+        return
+      }
       setReboundModal({
         open: true,
         relatedShotEventId: shotEvent.id,
@@ -1677,13 +2151,14 @@ export default function App() {
     setFoulModal(createEmptyFoulModal())
   }
 
-  function openPlayerFoulModal(teamKey, playerId) {
+  function openTeamFoulModal(teamKey, playerId = '') {
     setFoulModal({
       open: true,
-      step: 'type',
+      step: playerId ? 'type' : 'fouler',
       foulerTeamKey: teamKey,
       foulerId: playerId,
       chargedEntity: 'player',
+      actorScope: 'all',
       foulType: '',
       fouledPlayerId: '',
       freeThrowCount: 0,
@@ -1691,14 +2166,30 @@ export default function App() {
     })
   }
 
-  function openStaffFoulModal(teamKey, chargedEntity) {
+  function openCoachBenchTechnical(teamKey, chargedEntity) {
     setFoulModal({
       open: true,
-      step: 'type',
+      step: 'shots',
       foulerTeamKey: teamKey,
       foulerId: getCoachFoulerId(teamKey),
       chargedEntity,
-      foulType: '',
+      actorScope: 'staff',
+      foulType: 'technical',
+      fouledPlayerId: '',
+      freeThrowCount: 0,
+      freeThrowShooterId: '',
+    })
+  }
+
+  function openStaffFoulModal(teamKey) {
+    setFoulModal({
+      open: true,
+      step: 'actor',
+      foulerTeamKey: teamKey,
+      foulerId: '',
+      chargedEntity: 'player',
+      actorScope: 'staff',
+      foulType: 'technical',
       fouledPlayerId: '',
       freeThrowCount: 0,
       freeThrowShooterId: '',
@@ -1707,27 +2198,87 @@ export default function App() {
 
   function setFoulType(foulType) {
     setFoulModal((prev) => {
-      const nextStep = foulRequiresFouledPlayer(foulType, prev.chargedEntity)
-        ? 'target'
-        : 'shots'
+      const freeThrowOptions = FOUL_TYPE_CONFIG[foulType]?.freeThrows || [0]
+      const noFreeThrowsOnly = freeThrowOptions.length === 1 && freeThrowOptions[0] === 0
+      const hasFouler = Boolean(prev.foulerId)
+      const nextStep = noFreeThrowsOnly
+        ? hasFouler
+          ? foulRequiresFouledPlayer(foulType, 'player')
+            ? 'target'
+            : 'complete'
+          : 'fouler'
+        : foulType === 'technical'
+          ? 'actor'
+          : hasFouler
+            ? foulRequiresFouledPlayer(foulType, 'player')
+              ? 'target'
+              : 'shots'
+            : 'fouler'
 
-      return {
+      const nextState = {
         ...prev,
         foulType,
+        chargedEntity: foulType === 'technical' ? prev.chargedEntity : 'player',
+        actorScope: foulType === 'technical' ? prev.actorScope : 'all',
         fouledPlayerId: '',
         freeThrowCount: 0,
         freeThrowShooterId: '',
         step: nextStep,
       }
+
+      if (foulType !== 'technical' && !hasFouler) {
+        nextState.foulerId = ''
+      }
+
+      if (noFreeThrowsOnly && hasFouler && !foulRequiresFouledPlayer(foulType, 'player')) {
+        window.setTimeout(() => finalizeFoul({ ...nextState, open: true, freeThrowCount: 0 }), 0)
+      }
+
+      return nextState
     })
   }
 
-  function chooseFoulTarget(playerId) {
+  function chooseTechnicalActor(chargedEntity) {
     setFoulModal((prev) => ({
       ...prev,
-      fouledPlayerId: playerId,
-      step: 'shots',
+      chargedEntity,
+      foulerId: chargedEntity === 'player' ? '' : getCoachFoulerId(prev.foulerTeamKey),
+      step: chargedEntity === 'player' ? 'fouler' : 'shots',
     }))
+  }
+
+  function chooseFouler(playerId) {
+    const freeThrowOptions = FOUL_TYPE_CONFIG[foulModal.foulType]?.freeThrows || [0]
+    const noFreeThrowsOnly = freeThrowOptions.length === 1 && freeThrowOptions[0] === 0
+    const needsTarget = foulRequiresFouledPlayer(foulModal.foulType, 'player')
+    const nextState = {
+      ...foulModal,
+      chargedEntity: 'player',
+      foulerId: playerId,
+      step: noFreeThrowsOnly ? (needsTarget ? 'target' : 'complete') : needsTarget ? 'target' : 'shots',
+    }
+
+    setFoulModal(nextState)
+
+    if (noFreeThrowsOnly && !needsTarget) {
+      window.setTimeout(() => finalizeFoul({ ...nextState, open: true, freeThrowCount: 0 }), 0)
+    }
+  }
+
+  function chooseFoulTarget(playerId) {
+    const freeThrowOptions = FOUL_TYPE_CONFIG[foulModal.foulType]?.freeThrows || [0]
+    const noFreeThrowsOnly = freeThrowOptions.length === 1 && freeThrowOptions[0] === 0
+    const nextState = {
+      ...foulModal,
+      fouledPlayerId: playerId,
+      step: noFreeThrowsOnly ? 'complete' : 'shots',
+    }
+
+    setFoulModal(nextState)
+
+    if (noFreeThrowsOnly) {
+      window.setTimeout(() => finalizeFoul({ ...nextState, open: true, freeThrowCount: 0 }), 0)
+    }
   }
 
   function startFreeThrowSeries(teamKey, shooterId, total) {
@@ -1859,6 +2410,7 @@ export default function App() {
       mode: 'choice',
       reboundType: '',
       pickerTeamKey: '',
+      playerId: '',
     })
   }
 
@@ -1869,7 +2421,25 @@ export default function App() {
       mode: 'choice',
       reboundType: '',
       pickerTeamKey: '',
+      playerId: '',
     })
+  }
+
+  function answerCourtReboundPrompt(hasRebound) {
+    if (!hasRebound) {
+      closeCourtReboundPrompt()
+      return
+    }
+
+    setReboundModal({
+      open: true,
+      relatedShotEventId: courtReboundPrompt.relatedShotEventId,
+      mode: 'choice',
+      reboundType: '',
+      pickerTeamKey: '',
+      playerId: '',
+    })
+    closeCourtReboundPrompt()
   }
 
   function chooseReboundType(reboundType) {
@@ -1888,6 +2458,11 @@ export default function App() {
     }
 
     const relatedShot = currentMatch.events.find((e) => e.id === reboundModal.relatedShotEventId)
+    if (!relatedShot && reboundModal.playerId) {
+      submitRebound(reboundType, reboundModal.pickerTeamKey, reboundModal.playerId)
+      return
+    }
+
     if (!relatedShot) return
 
     if (reboundType === 'oreb') {
@@ -1935,12 +2510,52 @@ export default function App() {
   function closeTurnoverModal() {
     setTurnoverModal({
       open: false,
+      step: 'category',
       teamKey: '',
       playerId: '',
+      category: '',
+      violationType: '',
     })
   }
 
-  function submitTurnover(forcedByPlayerId = null) {
+  function chooseTurnoverCategory(category) {
+    const config = TURNOVER_CATEGORY_CONFIG[category]
+    if (!config) return
+
+    if (category === 'violation') {
+      setTurnoverModal((prev) => ({
+        ...prev,
+        category,
+        step: 'violationType',
+      }))
+      return
+    }
+
+    if (config.asksSteal) {
+      setTurnoverModal((prev) => ({
+        ...prev,
+        category,
+        step: 'steal',
+      }))
+      return
+    }
+
+    submitTurnover({
+      category,
+      violationType: '',
+      forcedByPlayerId: null,
+    })
+  }
+
+  function chooseTurnoverViolationType(violationType) {
+    submitTurnover({
+      category: 'violation',
+      violationType,
+      forcedByPlayerId: null,
+    })
+  }
+
+  function submitTurnover({ category, violationType = '', forcedByPlayerId = null }) {
     if (!currentMatch || !turnoverModal.open) return
 
     const { teamKey, playerId } = turnoverModal
@@ -1951,6 +2566,8 @@ export default function App() {
       teamKey,
       type: 'turnover',
       playerId,
+      turnoverCategory: category,
+      turnoverViolationType: violationType,
       forcedByPlayerId,
       lineupSnapshot: [...team.onCourt],
     })
@@ -2228,6 +2845,9 @@ export default function App() {
     const teamEvents = currentMatch.events.filter((e) => e.teamKey === teamKey)
     const teamColor =
       team.color || team.players?.[0]?.teamColor || (teamKey === 'home' ? HOME_TEAM_COLOR : DEFAULT_AWAY_COLOR)
+    const benchPlayers = team.players.filter((player) => !team.onCourt.includes(player.id))
+    const benchCount = benchPlayers.length
+    const benchPreview = benchPlayers.slice(0, 2).map((player) => getDisplayName(player)).join(', ')
 
     return (
       <>
@@ -2235,19 +2855,22 @@ export default function App() {
           <button
             className={`side-staff-btn ${teamKey} ${coachFoulCounts[teamKey] >= COACH_FOUL_LIMIT ? 'danger-foul' : coachFoulCounts[teamKey] === COACH_FOUL_LIMIT - 1 ? 'warn-foul' : ''}`}
             style={{ '--team-color': teamColor }}
-            onClick={() => openStaffFoulModal(teamKey, 'coach')}
+            onClick={() => {
+              if (pendingActionSelection.open && pendingActionSelection.action === 'foul') {
+                closePendingActionSelection()
+                openStaffFoulModal(teamKey)
+                return
+              }
+              openCoachBenchModal(teamKey)
+            }}
           >
-            <span>Coach</span>
-            <strong>{coachFoulCounts[teamKey]}/{COACH_FOUL_LIMIT}</strong>
-          </button>
-
-          <button
-            className={`side-staff-btn ${teamKey}`}
-            style={{ '--team-color': teamColor }}
-            onClick={() => openStaffFoulModal(teamKey, 'bench')}
-          >
-            <span>Bench</span>
-            <strong>Technical</strong>
+            <span className="side-staff-kicker">{team.name}</span>
+            <strong>Coach / Bench</strong>
+            <small>{getCoachDisplayName(team.coachName)}</small>
+            <small>
+              {benchCount > 0 ? `${benchCount} bench players` : 'No bench players'}
+            </small>
+            <em>{coachFoulCounts[teamKey]}/{COACH_FOUL_LIMIT} technicals</em>
           </button>
         </div>
 
@@ -2263,21 +2886,42 @@ export default function App() {
           return (
             <button
               key={player.id}
-              className={`side-player ${teamKey} ${selected ? 'selected' : ''} ${foulClass} ${playerFlashMap[player.id] || ''}`}
+              className={`side-player ${teamKey} ${selected ? 'selected' : ''} ${foulClass} ${playerFlashMap[player.id] || ''} ${
+                courtShotFlow.open &&
+                courtShotFlow.step === 'awaitSelection' &&
+                courtShotFlow.suggestedTeamKey === teamKey
+                  ? 'suggested-shot-team'
+                  : ''
+              } ${
+                courtShotFlow.open &&
+                courtShotFlow.step === 'awaitSelection' &&
+                courtShotFlow.suggestedTeamKey !== teamKey
+                  ? 'non-shot-team'
+                  : ''
+              }`}
               style={{ '--team-color': teamColor }}
               onClick={() => {
+                if (courtShotFlow.open && courtShotFlow.step === 'awaitSelection') {
+                  chooseCourtShotShooter(teamKey, player.id)
+                  return
+                }
+                if (pendingActionSelection.open) {
+                  handlePendingActionPlayer(teamKey, player.id)
+                  return
+                }
                 setSelectedTeam(teamKey)
                 setSelectedPlayerId(player.id)
               }}
             >
-              <div className="side-player-number">#{player.number}</div>
-              <div className="side-player-name">{getDisplayName(player)}</div>
+              <div className="side-player-topline">
+                <div className="side-player-number">#{player.number}</div>
+                <div className="side-player-name">{getLastName(player)}</div>
+              </div>
               {s.foul >= 3 && <div className={`foul-badge foul-count-${s.foul}`}>{s.foul} PF</div>}
-              <div className="side-player-mini">
+              <div className="side-player-statline">
                 <span>{s.pts} PTS</span>
                 <span>{s.reb} REB</span>
                 <span>{s.ast} AST</span>
-                <span>{s.foul} PF</span>
               </div>
             </button>
           )
@@ -2426,6 +3070,8 @@ export default function App() {
 
   const foulOptions =
     foulModal.open && currentMatch ? getOnCourtOpponents(foulModal.foulerTeamKey) : []
+  const foulFoulerOptions =
+    foulModal.open && currentMatch ? getOnCourtPlayers(foulModal.foulerTeamKey) : []
   const foulTypeOptions = getAllowedFoulTypes(foulModal.chargedEntity).map((type) => ({
     id: type,
     ...FOUL_TYPE_CONFIG[type],
@@ -2435,20 +3081,6 @@ export default function App() {
     : [0]
   const foulShooterOptions =
     foulModal.open && currentMatch ? getOnCourtOpponents(foulModal.foulerTeamKey) : []
-  const courtShotPlayerGroups = currentMatch
-    ? [
-        {
-          teamKey: 'home',
-          teamName: currentMatch.home.name,
-          players: getOnCourtPlayers('home'),
-        },
-        {
-          teamKey: 'away',
-          teamName: currentMatch.away.name,
-          players: getOnCourtPlayers('away'),
-        },
-      ]
-    : []
   const coachFoulCounts = currentMatch
     ? {
         home: getCoachFoulCount(allEvents, 'home'),
@@ -2465,19 +3097,43 @@ export default function App() {
 
   const turnoverStealOptions =
     turnoverModal.open && currentMatch ? getOnCourtOpponents(turnoverModal.teamKey) : []
+  const turnoverCategoryOptions = Object.entries(TURNOVER_CATEGORY_CONFIG).map(([id, config]) => ({
+    id,
+    ...config,
+  }))
 
   const reboundPickerOptions =
     reboundModal.open && reboundModal.mode === 'player' && currentMatch
       ? getOnCourtPlayers(reboundModal.pickerTeamKey)
       : []
+  const coachBenchTeam = coachBenchModal.open && currentMatch ? currentMatch[coachBenchModal.teamKey] : null
+  const coachBenchPlayers =
+    coachBenchTeam?.players?.filter((player) => !coachBenchTeam.onCourt.includes(player.id)) || []
   const recentSavedMatch = savedMatches[0] || null
+  const seasonSummary = useMemo(() => getSeasonSummary(savedMatches), [savedMatches])
   const previewPlayers = homeTeam.players.slice(0, 5)
   const extraPlayersCount = Math.max(homeTeam.players.length - previewPlayers.length, 0)
+  const seasonLeaderCards = [
+    { key: 'pts', label: 'Top Scorer', statLabel: 'PTS', leader: seasonSummary.leaders.pts, valueKey: 'pts' },
+    { key: 'reb', label: 'Top Rebounder', statLabel: 'REB', leader: seasonSummary.leaders.reb, valueKey: 'reb' },
+    { key: 'ast', label: 'Top Playmaker', statLabel: 'AST', leader: seasonSummary.leaders.ast, valueKey: 'ast' },
+    { key: 'stl', label: 'Top Steals', statLabel: 'STL', leader: seasonSummary.leaders.stl, valueKey: 'stl' },
+    { key: 'blk', label: 'Top Rim Protector', statLabel: 'BLK', leader: seasonSummary.leaders.blk, valueKey: 'blk' },
+    { key: 'mvp', label: 'Season MVP', statLabel: 'MVP', leader: seasonSummary.leaders.mvpScore, valueKey: 'mvpScore' },
+  ]
   const selectedTeamColor = currentMatch
     ? currentMatch[selectedTeam]?.color ||
       currentMatch[selectedTeam]?.players?.[0]?.teamColor ||
       (selectedTeam === 'home' ? HOME_TEAM_COLOR : DEFAULT_AWAY_COLOR)
     : HOME_TEAM_COLOR
+  const liveHomeTeamColor = currentMatch
+    ? currentMatch.home?.color || currentMatch.home?.players?.[0]?.teamColor || HOME_TEAM_COLOR
+    : HOME_TEAM_COLOR
+  const liveAwayTeamColor = currentMatch
+    ? currentMatch.away?.color || currentMatch.away?.players?.[0]?.teamColor || DEFAULT_AWAY_COLOR
+    : DEFAULT_AWAY_COLOR
+  const homeAttackingSide = currentMatch ? getAttackingSide('home', currentMatch.quarter) : 'right'
+  const awayAttackingSide = currentMatch ? getAttackingSide('away', currentMatch.quarter) : 'left'
   const selectedTeamSecondaryColor = currentMatch
     ? currentMatch[selectedTeam]?.secondaryColor ||
       currentMatch[selectedTeam]?.players?.[0]?.teamSecondaryColor ||
@@ -2486,8 +3142,27 @@ export default function App() {
         : DEFAULT_AWAY_SECONDARY_COLOR)
     : HOME_TEAM_SECONDARY_COLOR
 
+  useEffect(() => {
+    if (quarterSummaryOpen) {
+      setQuarterSummaryView('summary')
+    }
+  }, [quarterSummaryOpen])
+
+  function openPlayerHeatMap(teamKey, player) {
+    if (!currentMatch || !player) return
+    const teamName = teamKey === 'home' ? currentMatch.home.name : currentMatch.away.name
+    setShotMapPlayerFilter({
+      teamKey,
+      teamName,
+      playerId: player.id,
+      playerName: getDisplayName(player),
+    })
+    setPanelView('shots')
+    setBottomPanelOpen(true)
+  }
+
   return (
-    <div className="app">
+    <div className={`app ${screen === 'live' ? 'live-mode' : ''}`}>
       {(pullRefreshLabel || isRefreshingMenuData) && screen !== 'live' && (
         <div className={`pull-refresh-indicator ${isRefreshingMenuData ? 'active' : ''}`}>
           {pullRefreshLabel}
@@ -2506,7 +3181,9 @@ export default function App() {
             <div className="info-card home-roster-card">
               <div className="info-title">Current Home Team</div>
               <div className="info-main">{homeTeam.name}</div>
-              <div className="info-sub">{homeTeam.players.length} players saved</div>
+              <div className="info-sub">
+                {homeTeam.players.length} players saved · {getCoachDisplayName(homeTeam.coachName)}
+              </div>
 
               <div className="home-roster-preview">
                 {previewPlayers.map((player) => (
@@ -2614,6 +3291,67 @@ export default function App() {
             </div>
           )}
 
+          <div className="card season-summary-card">
+            <div className="season-summary-header">
+              <div>
+                <div className="section-title">Club Snapshot</div>
+                <div className="season-summary-title">Season leaders and backup tools</div>
+              </div>
+
+              <div className="export-actions">
+                <button className="primary-btn export-btn" onClick={exportClubData} disabled={isExportingData}>
+                  {isExportingData ? 'Exporting...' : 'Export Club Data'}
+                </button>
+                <button className="mini-panel-btn export-btn export-btn-secondary" onClick={exportSeasonStatsCsv}>
+                  Export Season CSV
+                </button>
+              </div>
+            </div>
+
+            <div className="season-totals-grid">
+              <div className="season-total-card">
+                <span>Games</span>
+                <strong>{seasonSummary.totals.games}</strong>
+              </div>
+              <div className="season-total-card">
+                <span>Record</span>
+                <strong>
+                  {seasonSummary.totals.wins}-{seasonSummary.totals.losses}
+                </strong>
+              </div>
+              <div className="season-total-card">
+                <span>Total Points</span>
+                <strong>{seasonSummary.totals.points}</strong>
+              </div>
+              <div className="season-total-card">
+                <span>Total Assists</span>
+                <strong>{seasonSummary.totals.assists}</strong>
+              </div>
+            </div>
+
+            <div className="season-leaders-grid">
+              {seasonLeaderCards.map((item) => (
+                <div key={item.key} className="season-leader-card">
+                  <div className="season-leader-label">{item.label}</div>
+                  {item.leader ? (
+                    <>
+                      <div className="season-leader-name">
+                        {getDisplayName(item.leader)} <span>#{item.leader.number}</span>
+                      </div>
+                      <div className="season-leader-value">
+                        {item.leader[item.valueKey]}
+                        <span>{item.statLabel}</span>
+                      </div>
+                      <div className="season-leader-sub">{item.leader.games} games tracked</div>
+                    </>
+                  ) : (
+                    <div className="season-leader-empty">Save some completed matches to unlock season leaders.</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
         </div>
       )}
 
@@ -2651,6 +3389,33 @@ export default function App() {
                 }
               }}
               placeholder="Enter home team name"
+            />
+
+            <label className="field-label">Coach Name</label>
+            <input
+              className="text-input"
+              value={homeTeam.coachName}
+              onChange={async (e) => {
+                const nextCoachName = e.target.value
+
+                setHomeTeam((prev) => ({
+                  ...prev,
+                  coachName: nextCoachName,
+                }))
+                saveJSON(STORAGE_KEYS.homeCoachName, nextCoachName)
+
+                if (!homeTeamId) return
+
+                const { error } = await supabase
+                  .from('teams')
+                  .update({ coach_name: nextCoachName })
+                  .eq('id', homeTeamId)
+
+                if (error) {
+                  console.warn('Coach name column not available in Supabase yet:', error)
+                }
+              }}
+              placeholder="Enter home coach name"
             />
 
             <div className="grid-two team-colors-grid">
@@ -2761,7 +3526,9 @@ export default function App() {
             <div className="section-title">Home Team</div>
             <div className="preload-box">
               <div className="preload-name">{homeTeam.name}</div>
-              <div className="preload-sub">{homeTeam.players.length} saved players loaded</div>
+              <div className="preload-sub">
+                Coach {getCoachDisplayName(homeTeam.coachName)} · {homeTeam.players.length} saved players loaded
+              </div>
             </div>
           </div>
 
@@ -2779,6 +3546,19 @@ export default function App() {
                 }))
               }
               placeholder="Enter opponent team name"
+            />
+
+            <label className="field-label">Opponent Coach Name</label>
+            <input
+              className="text-input"
+              value={newMatch.opponentCoachName}
+              onChange={(e) =>
+                setNewMatch((prev) => ({
+                  ...prev,
+                  opponentCoachName: e.target.value,
+                }))
+              }
+              placeholder="Enter opponent coach name"
             />
 
             <div className="grid-two">
@@ -2918,7 +3698,11 @@ export default function App() {
       )}
 
       {screen === 'live' && currentMatch && (
-        <div className="live-court-page">
+        <div
+          className={`live-court-page ${
+            courtShotFlow.open || pendingActionSelection.open ? 'shot-capture-mode' : ''
+          } ${pendingActionSelection.open && pendingActionSelection.action === 'foul' ? 'foul-pick-mode' : ''}`}
+        >
           <div className="court-background">
             <div className="court-overlay-lines" />
           </div>
@@ -2929,10 +3713,15 @@ export default function App() {
             currentQuarterFouls={currentQuarterFouls}
             homeTotals={homeTotals}
             awayTotals={awayTotals}
+            homeTeamColor={liveHomeTeamColor}
+            awayTeamColor={liveAwayTeamColor}
+            homeAttackingSide={homeAttackingSide}
+            awayAttackingSide={awayAttackingSide}
             panelView={panelView}
             bottomPanelOpen={bottomPanelOpen}
             setPanelView={setPanelView}
             setBottomPanelOpen={setBottomPanelOpen}
+            clearShotMapPlayerFilter={() => setShotMapPlayerFilter(null)}
             setQuarterSummaryOpen={setQuarterSummaryOpen}
             openFixAssistModal={openFixAssistModal}
             fixAssistDisabled={fixableScoringEvents.length === 0}
@@ -2953,6 +3742,13 @@ export default function App() {
             onCourtPointerCancel={handleCourtPointerCancel}
             courtShotLocation={courtShotFlow.open ? courtShotFlow.location : null}
             courtShotMode={courtShotFlow.open ? courtShotFlow.mode : ''}
+            courtShotStep={
+              pendingActionSelection.open
+                ? 'awaitSelection'
+                : courtShotFlow.open
+                  ? courtShotFlow.step
+                  : 'idle'
+            }
           />
 
           <SelectedPlayerDock
@@ -2964,16 +3760,15 @@ export default function App() {
             selectedStats={selectedStats}
             titansJerseyBack={titansJerseyBack}
             openSubModal={openSubModal}
-            setShotModal={setShotModal}
-            openReboundModal={openReboundModal}
-            openPlayerFoulModal={openPlayerFoulModal}
-            setTurnoverModal={setTurnoverModal}
+            beginActionSelection={beginActionSelection}
+            openPlayerHeatMap={openPlayerHeatMap}
           />
 
           <BottomDrawer
             bottomPanelOpen={bottomPanelOpen}
             setBottomPanelOpen={setBottomPanelOpen}
             panelView={panelView}
+            shotMapPlayerFilter={shotMapPlayerFilter}
             groupedLog={groupedLog}
             currentMatch={currentMatch}
             undoEvent={undoEvent}
@@ -3261,75 +4056,90 @@ export default function App() {
       )}
 
       {courtShotFlow.open && (
-        <div className="modal-overlay" onClick={closeCourtShotFlow}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-top">
-              <h3>{courtShotFlow.mode === 'made' ? 'Made Shot on Court' : 'Missed Shot on Court'}</h3>
-              <button className="modal-close" onClick={closeCourtShotFlow}>
-                x
-              </button>
-            </div>
-
-            {courtShotFlow.step === 'shooter' && (
-              <>
-                <div className="modal-subtext">
-                  {courtShotFlow.mode === 'made'
-                    ? 'Long press detected. Choose the player who made the shot.'
-                    : 'Tap detected. Choose the player who missed the shot.'}
+        <>
+          {courtShotFlow.step === 'shotType' && (
+            <div className="modal-overlay" onClick={closeCourtShotFlow}>
+              <div className="modal-card compact-shot-type-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-top">
+                  <h3>{courtShotFlow.mode === 'made' ? 'Made Shot Type' : 'Missed Shot Type'}</h3>
+                  <button className="modal-close" onClick={closeCourtShotFlow}>
+                    x
+                  </button>
                 </div>
 
-                <div className="court-shot-team-list">
-                  {courtShotPlayerGroups.map((group) => (
-                    <div key={group.teamKey} className="court-shot-team-group">
-                      <div className="picker-title">{group.teamName}</div>
-                      <div className="bench-list">
-                        {group.players.map((player) => (
-                          <button
-                            key={player.id}
-                            className="bench-item"
-                            onClick={() => chooseCourtShotShooter(group.teamKey, player.id)}
-                          >
-                            <div className="avatar">#{player.number}</div>
-                            <div className="bench-name">{formatPlayer(player)}</div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {courtShotFlow.step === 'shotType' && (
-              <>
                 <div className="modal-subtext">
                   {courtShotFlow.mode === 'made'
-                    ? 'What shot was made from that spot?'
-                    : 'What shot was missed from that spot?'}
+                    ? `Suggested ${courtShotFlow.suggestedShotType} from the tap location. Choose the shot type, then tap the player banner.`
+                    : courtShotFlow.shooterId
+                      ? `Suggested ${courtShotFlow.suggestedShotType} from the tap location. Choose whether the miss was a 2PT or 3PT attempt.`
+                      : `Likely ${currentMatch?.[courtShotFlow.suggestedTeamKey || 'home']?.name || 'team'} attack. Choose the shot type first, then tap the player banner.`}
                 </div>
 
                 <div className="pill-row">
                   {['2PT', '3PT'].map((type) => (
                     <button
                       key={type}
-                      className="pill-btn"
-                      onClick={() => {
-                        recordShot({
-                          teamKey: courtShotFlow.shooterTeamKey,
-                          shooterId: courtShotFlow.shooterId,
-                          shotType: type,
-                          result: courtShotFlow.mode === 'made' ? 'made' : 'missed',
-                          shotLocation: courtShotFlow.location,
-                        })
-                        closeCourtShotFlow()
-                      }}
+                      className={`pill-btn ${courtShotFlow.shotType === type ? 'active' : ''}`}
+                      onClick={() => chooseCourtShotType(type)}
                     >
                       {type}
                     </button>
                   ))}
                 </div>
-              </>
-            )}
+              </div>
+            </div>
+          )}
+
+          {courtShotFlow.step === 'awaitSelection' && (
+            <div className="court-shot-hint">
+              {courtShotFlow.mode === 'made'
+                ? `Shot tagged as ${courtShotFlow.shotType}. Likely ${currentMatch?.[courtShotFlow.suggestedTeamKey || 'home']?.name || 'team'} attack. Tap the player who scored.`
+                : courtShotFlow.shotType
+                  ? `Miss tagged as ${courtShotFlow.shotType}. Tap the player who missed.`
+                  : `Likely ${currentMatch?.[courtShotFlow.suggestedTeamKey || 'home']?.name || 'team'} attack. Tap the player who missed, then choose 2PT or 3PT.`}
+              <button className="mini-panel-btn court-shot-cancel" onClick={closeCourtShotFlow}>
+                Cancel
+              </button>
+            </div>
+          )}
+        </>
+      )}
+
+      {pendingActionSelection.open && (
+        <div className="court-shot-hint">
+          {pendingActionSelection.action === 'shot' && 'Tap the player who took the shot.'}
+          {pendingActionSelection.action === 'rebound' && 'Tap the player who got the rebound.'}
+          {pendingActionSelection.action === 'foul' &&
+            'Tap the player who committed the foul, or use Coach/Bench for a technical.'}
+          {pendingActionSelection.action === 'turnover' && 'Tap the player who turned it over.'}
+          <button className="mini-panel-btn court-shot-cancel" onClick={closePendingActionSelection}>
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {courtReboundPrompt.open && (
+        <div className="modal-overlay" onClick={closeCourtReboundPrompt}>
+          <div className="modal-card compact-shot-type-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-top">
+              <h3>Rebound?</h3>
+              <button className="modal-close" onClick={closeCourtReboundPrompt}>
+                x
+              </button>
+            </div>
+
+            <div className="modal-subtext">
+              Was there a rebound after that miss?
+            </div>
+
+            <div className="pill-row">
+              <button className="pill-btn" onClick={() => answerCourtReboundPrompt(true)}>
+                Yes
+              </button>
+              <button className="pill-btn" onClick={() => answerCourtReboundPrompt(false)}>
+                No
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -3427,12 +4237,46 @@ export default function App() {
         </div>
       )}
 
+      {coachBenchModal.open && coachBenchTeam && (
+        <div className="modal-overlay" onClick={closeCoachBenchModal}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-top">
+              <h3>{coachBenchTeam.name} Coach / Bench</h3>
+              <button className="modal-close" onClick={closeCoachBenchModal}>
+                x
+              </button>
+            </div>
+
+            <div className="modal-subtext">
+              Coach: {getCoachDisplayName(coachBenchTeam.coachName)}
+            </div>
+
+            {coachBenchPlayers.length === 0 ? (
+              <div className="empty-bench">No bench players available.</div>
+            ) : (
+              <div className="bench-list">
+                {coachBenchPlayers.map((player) => (
+                  <div key={player.id} className="bench-item bench-item-rich static-bench-item">
+                    <div className="avatar">#{player.number}</div>
+                    <div className="bench-item-body">
+                      <div className="bench-name">{formatPlayer(player)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {foulModal.open && (
         <div className="modal-overlay" onClick={closeFoulModal}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-top">
               <h3>
                 {foulModal.step === 'type' && 'Foul Type'}
+                {foulModal.step === 'actor' && 'Who Committed It?'}
+                {foulModal.step === 'fouler' && 'Who Fouled?'}
                 {foulModal.step === 'target' && 'Who Got Fouled?'}
                 {foulModal.step === 'shots' && 'Free Throws Awarded'}
                 {foulModal.step === 'shooter' && 'Who Shoots the Free Throws?'}
@@ -3445,11 +4289,7 @@ export default function App() {
             {foulModal.step === 'type' && (
               <>
                 <div className="modal-subtext">
-                  {foulModal.chargedEntity === 'player'
-                    ? 'Choose the foul type, then set any free throws from the same flow.'
-                    : `This will be logged as a ${
-                        foulModal.chargedEntity === 'bench' ? 'bench technical charged to the coach' : 'coach technical'
-                      }.`}
+                  Choose the foul type first, then choose who committed it.
                 </div>
                 <div className="foul-type-list">
                   {foulTypeOptions.map((option) => (
@@ -3460,6 +4300,45 @@ export default function App() {
                     >
                       <div className="foul-type-name">{option.label}</div>
                       <div className="foul-type-desc">{option.description}</div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {foulModal.step === 'actor' && (
+              <>
+                <div className="modal-subtext">
+                  {foulModal.foulType === 'technical'
+                    ? 'Was this a player technical, coach technical, or bench technical?'
+                    : 'Who committed the foul?'}
+                </div>
+                <div className="pill-row ft-step-actions">
+                  {(foulModal.actorScope === 'staff' ? ['coach', 'bench'] : ['player', 'coach', 'bench']).map((entity) => (
+                    <button
+                      key={entity}
+                      className="pill-btn"
+                      onClick={() => chooseTechnicalActor(entity)}
+                    >
+                      {entity === 'player' ? 'Player' : entity === 'coach' ? 'Coach' : 'Bench'}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {foulModal.step === 'fouler' && (
+              <>
+                <div className="modal-subtext">Choose the player who committed the foul.</div>
+                <div className="bench-list">
+                  {foulFoulerOptions.map((player) => (
+                    <button
+                      key={player.id}
+                      className="bench-item"
+                      onClick={() => chooseFouler(player.id)}
+                    >
+                      <div className="avatar">#{player.number}</div>
+                      <div className="bench-name">{formatPlayer(player)}</div>
                     </button>
                   ))}
                 </div>
@@ -3621,31 +4500,88 @@ export default function App() {
         <div className="modal-overlay" onClick={closeTurnoverModal}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-top">
-              <h3>Turnover</h3>
+              <h3>
+                {turnoverModal.step === 'category' && 'Turnover Type'}
+                {turnoverModal.step === 'violationType' && 'Violation Detail'}
+                {turnoverModal.step === 'steal' && 'Was There a Steal?'}
+              </h3>
               <button className="modal-close" onClick={closeTurnoverModal}>
                 ✕
               </button>
             </div>
 
-            <div className="modal-subtext">Was it a steal?</div>
+            {turnoverModal.step === 'category' && (
+              <>
+                <div className="modal-subtext">Choose the turnover category.</div>
+                <div className="foul-type-list">
+                  {turnoverCategoryOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      className="foul-type-btn"
+                      onClick={() => chooseTurnoverCategory(option.id)}
+                    >
+                      <div className="foul-type-name">{option.label}</div>
+                      <div className="foul-type-desc">{option.description}</div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
 
-            <div className="bench-list">
+            {turnoverModal.step === 'violationType' && (
+              <>
+                <div className="modal-subtext">What kind of violation was it?</div>
+                <div className="bench-list">
+                  {TURNOVER_VIOLATION_OPTIONS.map((option) => (
+                    <button
+                      key={option.id}
+                      className="bench-item"
+                      onClick={() => chooseTurnoverViolationType(option.id)}
+                    >
+                      <div className="avatar">V</div>
+                      <div className="bench-name">{option.label}</div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {turnoverModal.step === 'steal' && (
+              <div className="modal-subtext">Was the turnover forced as a steal?</div>
+            )}
+
+            {turnoverModal.step === 'steal' && <div className="bench-list">
               {turnoverStealOptions.map((player) => (
                 <button
                   key={player.id}
                   className="bench-item"
-                  onClick={() => submitTurnover(player.id)}
+                  onClick={() =>
+                    submitTurnover({
+                      category: turnoverModal.category,
+                      violationType: '',
+                      forcedByPlayerId: player.id,
+                    })
+                  }
                 >
                   <div className="avatar">#{player.number}</div>
                   <div className="bench-name">{formatPlayer(player)}</div>
                 </button>
               ))}
 
-              <button className="bench-item no-assist-btn" onClick={() => submitTurnover(null)}>
+              <button
+                className="bench-item no-assist-btn"
+                onClick={() =>
+                  submitTurnover({
+                    category: turnoverModal.category,
+                    violationType: '',
+                    forcedByPlayerId: null,
+                  })
+                }
+              >
                 <div className="avatar">—</div>
                 <div className="bench-name">No Steal</div>
               </button>
-            </div>
+            </div>}
           </div>
         </div>
       )}
@@ -3733,92 +4669,146 @@ export default function App() {
         <div className="modal-overlay" onClick={() => setQuarterSummaryOpen(false)}>
           <div className="modal-card quarter-summary-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-top">
-              <h3>{quarterSummaryTitle}</h3>
+              <h3>
+                {quarterSummaryView === 'summary'
+                  ? quarterSummaryTitle
+                  : quarterSummaryView === 'log'
+                    ? 'Live Log'
+                    : 'Box Score'}
+              </h3>
               <button className="modal-close" onClick={() => setQuarterSummaryOpen(false)}>
                 x
               </button>
             </div>
 
-            <div className="quarter-summary-content">
-              <div className="quarter-summary-team">
-                <div className="summary-team-name">{currentMatch.home.name}</div>
-                <div className="summary-score">
-                  {isHalftimeSummary ? halftimeScore.home : currentQuarterScore.home}
+            {quarterSummaryView === 'summary' && (
+              <div className="quarter-summary-content">
+                <div className="quarter-summary-team">
+                  <div className="summary-team-name">{currentMatch.home.name}</div>
+                  <div className="summary-score">
+                    {isHalftimeSummary ? halftimeScore.home : currentQuarterScore.home}
+                  </div>
+                  <div className="summary-label">Points</div>
+                  <div className="summary-stats-grid">
+                    <div>
+                      <span className="stat-label">Fouls:</span>{' '}
+                      {isHalftimeSummary ? halftimeTeamFouls.home : currentQuarterFouls.home}
+                    </div>
+                    <div>
+                      <span className="stat-label">Reb:</span>{' '}
+                      {isHalftimeSummary ? halftimeTotals.home.rebounds : homeTotals.rebounds}
+                    </div>
+                    <div>
+                      <span className="stat-label">Ast:</span>{' '}
+                      {isHalftimeSummary ? halftimeTotals.home.assists : homeTotals.assists}
+                    </div>
+                  </div>
                 </div>
-                <div className="summary-label">Points</div>
-                <div className="summary-stats-grid">
-                  <div>
-                    <span className="stat-label">Fouls:</span>{' '}
-                    {isHalftimeSummary ? halftimeTeamFouls.home : currentQuarterFouls.home}
+
+                <div className="quarter-summary-divider" />
+
+                <div className="quarter-summary-team">
+                  <div className="summary-team-name">{currentMatch.away.name}</div>
+                  <div className="summary-score">
+                    {isHalftimeSummary ? halftimeScore.away : currentQuarterScore.away}
                   </div>
-                  <div>
-                    <span className="stat-label">Reb:</span>{' '}
-                    {isHalftimeSummary ? halftimeTotals.home.rebounds : homeTotals.rebounds}
-                  </div>
-                  <div>
-                    <span className="stat-label">Ast:</span>{' '}
-                    {isHalftimeSummary ? halftimeTotals.home.assists : homeTotals.assists}
+                  <div className="summary-label">Points</div>
+                  <div className="summary-stats-grid">
+                    <div>
+                      <span className="stat-label">Fouls:</span>{' '}
+                      {isHalftimeSummary ? halftimeTeamFouls.away : currentQuarterFouls.away}
+                    </div>
+                    <div>
+                      <span className="stat-label">Reb:</span>{' '}
+                      {isHalftimeSummary ? halftimeTotals.away.rebounds : awayTotals.rebounds}
+                    </div>
+                    <div>
+                      <span className="stat-label">Ast:</span>{' '}
+                      {isHalftimeSummary ? halftimeTotals.away.assists : awayTotals.assists}
+                    </div>
                   </div>
                 </div>
               </div>
+            )}
 
-              <div className="quarter-summary-divider" />
+            {quarterSummaryView === 'log' && (
+              <div className="quarter-summary-panel-body log-panel">
+                {Array.from({ length: currentMatch.quarter }, (_, i) => currentMatch.quarter - i).map((q) => (
+                  <div key={q} className="log-quarter">
+                    <div className="log-quarter-title">Q{q}</div>
 
-              <div className="quarter-summary-team">
-                <div className="summary-team-name">{currentMatch.away.name}</div>
-                <div className="summary-score">
-                  {isHalftimeSummary ? halftimeScore.away : currentQuarterScore.away}
-                </div>
-                <div className="summary-label">Points</div>
-                <div className="summary-stats-grid">
-                  <div>
-                    <span className="stat-label">Fouls:</span>{' '}
-                    {isHalftimeSummary ? halftimeTeamFouls.away : currentQuarterFouls.away}
+                    {groupedLog[q].length === 0 ? (
+                      <div className="log-empty">No events</div>
+                    ) : (
+                      [...groupedLog[q]].reverse().map((evt) => {
+                        const running = getRunningScoreUntil(currentMatch.events, evt.id)
+
+                        return (
+                          <div key={evt.id} className={`log-row log-row-${evt.type}`}>
+                            <div className="log-main">
+                              <div className="log-desc">{describeMatchEvent(evt, currentMatch)}</div>
+                              <div className="log-score-mini">
+                                Score: {running.home}-{running.away}
+                              </div>
+                            </div>
+                            <button className="undo-row-btn" onClick={() => undoEvent(evt.id)}>
+                              Undo
+                            </button>
+                          </div>
+                        )
+                      })
+                    )}
                   </div>
-                  <div>
-                    <span className="stat-label">Reb:</span>{' '}
-                    {isHalftimeSummary ? halftimeTotals.away.rebounds : awayTotals.rebounds}
-                  </div>
-                  <div>
-                    <span className="stat-label">Ast:</span>{' '}
-                    {isHalftimeSummary ? halftimeTotals.away.assists : awayTotals.assists}
-                  </div>
-                </div>
+                ))}
               </div>
-            </div>
+            )}
+
+            {quarterSummaryView === 'box' && (
+              <div className="quarter-summary-panel-body quarter-summary-box-panel">
+                {renderSummaryBoxScore(currentMatch.home.name, currentMatch.home.players, homeStats)}
+                {renderSummaryBoxScore(currentMatch.away.name, currentMatch.away.players, awayStats)}
+              </div>
+            )}
 
             <div className="quarter-summary-actions">
-              <button className="danger-outline-btn" onClick={() => setQuarterSummaryOpen(false)}>
-                Back to Game
-              </button>
-              <button
-                className="mini-panel-btn"
-                onClick={() => {
-                  setPanelView('log')
-                  setBottomPanelOpen(true)
-                }}
-              >
-                Live Log
-              </button>
-              <button
-                className="mini-panel-btn"
-                onClick={() => {
-                  setPanelView('box')
-                  setBottomPanelOpen(true)
-                }}
-              >
-                Box Score
-              </button>
-              {currentMatch.quarter < 4 && (
-                <button
-                  className="primary-btn"
-                  onClick={() => {
-                    advanceQuarterFromSummary()
-                    setQuarterSummaryOpen(false)
-                  }}
-                >
-                  {isHalftimeSummary ? 'Start Q3' : `Start Q${currentMatch.quarter + 1}`}
-                </button>
+              {quarterSummaryView === 'summary' ? (
+                <>
+                  <button className="danger-outline-btn" onClick={() => setQuarterSummaryOpen(false)}>
+                    Back to Game
+                  </button>
+                  <button
+                    className="mini-panel-btn"
+                    onClick={() => setQuarterSummaryView('log')}
+                  >
+                    Live Log
+                  </button>
+                  <button
+                    className="mini-panel-btn"
+                    onClick={() => setQuarterSummaryView('box')}
+                  >
+                    Box Score
+                  </button>
+                  {currentMatch.quarter < 4 && (
+                    <button
+                      className="primary-btn"
+                      onClick={() => {
+                        advanceQuarterFromSummary()
+                        setQuarterSummaryOpen(false)
+                      }}
+                    >
+                      {isHalftimeSummary ? 'Start Q3' : `Start Q${currentMatch.quarter + 1}`}
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <button className="mini-panel-btn" onClick={() => setQuarterSummaryView('summary')}>
+                    Back to Summary
+                  </button>
+                  <button className="danger-outline-btn" onClick={() => setQuarterSummaryOpen(false)}>
+                    Back to Game
+                  </button>
+                </>
               )}
             </div>
           </div>
