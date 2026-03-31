@@ -1611,6 +1611,17 @@ button {
   flex: 1 1 auto;
 }
 
+.live-court-page,
+.live-court-page * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.live-court-page {
+  -webkit-tap-highlight-color: transparent;
+}
+
 .live-court-page.shot-capture-mode .score-center-block,
 .live-court-page.shot-capture-mode .selected-main-card,
 .live-court-page.shot-capture-mode .action-dock-grid,
