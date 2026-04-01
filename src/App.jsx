@@ -4754,15 +4754,14 @@ export default function App() {
             {turnoverModal.step === 'category' && (
               <>
                 <div className="modal-subtext">Choose the turnover category.</div>
-                <div className="foul-type-list">
+                <div className="turnover-type-grid">
                   {turnoverCategoryOptions.map((option) => (
                     <button
                       key={option.id}
-                      className="foul-type-btn"
+                      className="turnover-type-btn"
                       onClick={() => chooseTurnoverCategory(option.id)}
                     >
-                      <div className="foul-type-name">{option.label}</div>
-                      <div className="foul-type-desc">{option.description}</div>
+                      {option.label}
                     </button>
                   ))}
                 </div>

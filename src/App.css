@@ -2764,6 +2764,35 @@ button {
   color: rgba(226, 232, 240, 0.88);
 }
 
+.turnover-type-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.turnover-type-btn {
+  min-height: 68px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(135deg, rgba(11, 17, 27, 0.98), rgba(18, 29, 43, 0.94));
+  color: #fff;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1.05;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-shadow: 0 12px 20px rgba(0, 0, 0, 0.2);
+}
+
+.turnover-type-btn:hover {
+  border-color: rgba(147, 197, 253, 0.4);
+  transform: translateY(-1px);
+}
+
 /* DRAWER PANEL */
 
 .bottom-panel-court {
