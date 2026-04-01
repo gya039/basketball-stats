@@ -137,23 +137,23 @@ function describeEvent(evt, match) {
 
     if (evt.result === 'made') {
       if (evt.shotType === 'FT') {
-        return `${formatPlayer(shooter)} made FT ${evt.freeThrowNumber || 1} of ${evt.freeThrowTotal || 1}`
+        return `SCORE - "${getDisplayName(shooter)}" FREE THROW ${evt.freeThrowNumber || 1}/${evt.freeThrowTotal || 1}`
       }
-      return `${formatPlayer(shooter)} made ${evt.shotType}${assister ? ` - AST ${formatPlayer(assister)}` : ''}`
+      return `SCORE - "${getDisplayName(shooter)}" ${evt.isDunk ? 'DUNK' : evt.shotType === '2PT' ? '2 POINTS' : '3 POINTS'}${assister ? ` - AST "${getDisplayName(assister)}"` : ''}`
     }
 
     if (evt.shotType === 'FT') {
-      return `${formatPlayer(shooter)} missed FT ${evt.freeThrowNumber || 1} of ${evt.freeThrowTotal || 1}`
+      return `MISS - "${getDisplayName(shooter)}" FREE THROW ${evt.freeThrowNumber || 1}/${evt.freeThrowTotal || 1}`
     }
 
-    return `${formatPlayer(shooter)} missed ${evt.shotType}${blocker ? ` - BLK ${formatPlayer(blocker)}` : ''}`
+    return `MISS - "${getDisplayName(shooter)}" ${evt.isDunk ? 'DUNK' : evt.shotType === '2PT' ? '2 POINTS' : '3 POINTS'}${blocker ? ` - BLOCK "${getDisplayName(blocker)}"` : ''}`
   }
 
   if (evt.type === 'rebound') {
     const team = match[evt.teamKey]
     const player = evt.playerId ? findPlayerById(team.players, evt.playerId) : null
-    if (!player) return `${team.name} team rebound`
-    return `${formatPlayer(player)} ${evt.reboundType === 'oreb' ? 'offensive' : 'defensive'} rebound`
+    if (!player) return `REBOUND - "${team.name}" TEAM`
+    return `REBOUND - "${getDisplayName(player)}" ${evt.reboundType === 'oreb' ? 'OFFENSIVE' : 'DEFENSIVE'}`
   }
 
   if (evt.type === 'foul') {
@@ -161,7 +161,7 @@ function describeEvent(evt, match) {
     const fouledTeam = evt.teamKey === 'home' ? match.away : match.home
     const fouler = findPlayerById(foulingTeam.players, evt.foulerId)
     const fouled = findPlayerById(fouledTeam.players, evt.fouledPlayerId)
-    return `${formatPlayer(fouler)} foul - ${formatPlayer(fouled)} fouled`
+    return `FOUL - "${getDisplayName(fouler)}"${fouled ? ` - ON "${getDisplayName(fouled)}"` : ''}`
   }
 
   if (evt.type === 'turnover') {
@@ -169,14 +169,16 @@ function describeEvent(evt, match) {
     const oppTeam = evt.teamKey === 'home' ? match.away : match.home
     const player = findPlayerById(team.players, evt.playerId)
     const stealer = evt.forcedByPlayerId ? findPlayerById(oppTeam.players, evt.forcedByPlayerId) : null
-    return `${formatPlayer(player)} turnover${stealer ? ` - STL ${formatPlayer(stealer)}` : ''}`
+    return stealer
+      ? `STEAL - "${getDisplayName(stealer)}" - TURNOVER "${getDisplayName(player)}"`
+      : `TURNOVER - "${getDisplayName(player)}"`
   }
 
   if (evt.type === 'substitution') {
     const team = match[evt.teamKey]
     const outPlayer = findPlayerById(team.players, evt.playerOutId)
     const inPlayer = findPlayerById(team.players, evt.playerInId)
-    return `${formatPlayer(outPlayer)} out - ${formatPlayer(inPlayer)} in`
+    return `SUB - "${getDisplayName(outPlayer)}" OUT - "${getDisplayName(inPlayer)}" IN`
   }
 
   return 'Event'
@@ -479,11 +481,8 @@ function renderShotMap(teamName, shots) {
 export default function MatchDetailView({ match, onBack }) {
   const events = match.events || []
   const groupedLog = getEventsByQuarter(events)
-  const homeEvents = events.filter((e) => e.teamKey === 'home')
-  const awayEvents = events.filter((e) => e.teamKey === 'away')
-
-  const homeStats = getPlayerStatsFromEvents(match.home.players, homeEvents)
-  const awayStats = getPlayerStatsFromEvents(match.away.players, awayEvents)
+  const homeStats = getPlayerStatsFromEvents(match.home.players, events)
+  const awayStats = getPlayerStatsFromEvents(match.away.players, events)
 
   const homeTotals = getTeamTotals(match.home.players, homeStats)
   const awayTotals = getTeamTotals(match.away.players, awayStats)
@@ -682,3 +681,4 @@ export default function MatchDetailView({ match, onBack }) {
     </div>
   )
 }
+

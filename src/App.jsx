@@ -23,9 +23,14 @@ const DEFAULT_AWAY_SECONDARY_COLOR = '#fca5a5'
 const DEFAULT_HOME_COACH_NAME = ''
 const DEFAULT_AWAY_COACH_NAME = ''
 const COACH_FOUL_LIMIT = 3
+const COURT_WIDTH_UNITS = 280
+const COURT_HEIGHT_UNITS = 150
+const BASKET_X_FROM_BASELINE = 15.75
+const BASKET_Y_UNITS = 75
+const THREE_POINT_RADIUS_UNITS = 67.5
+const THREE_POINT_SIDE_OFFSET_UNITS = 9
 const COURT_LEFT_BASKET = { x: 6.5, y: 50 }
 const COURT_RIGHT_BASKET = { x: 93.5, y: 50 }
-const THREE_POINT_SUGGESTION_DISTANCE = 18.5
 const FOUL_TYPE_CONFIG = {
   personal: {
     label: 'Personal',
@@ -141,6 +146,17 @@ function getCoachFoulCount(events, teamKey) {
   ).length
 }
 
+function getPlayerFoulTypeCount(events, teamKey, playerId, foulType) {
+  return events.filter(
+    (evt) =>
+      evt.type === 'foul' &&
+      evt.teamKey === teamKey &&
+      evt.foulerId === playerId &&
+      evt.chargedEntity === 'player' &&
+      evt.foulType === foulType
+  ).length
+}
+
 function getFoulActorLabel(match, teamKey, evt) {
   const team = match[teamKey]
 
@@ -202,6 +218,52 @@ function getBasketTarget(teamKey, quarter) {
     : COURT_RIGHT_BASKET
 }
 
+function toCourtUnits(location) {
+  return {
+    x: (location.x / 100) * COURT_WIDTH_UNITS,
+    y: (location.y / 100) * COURT_HEIGHT_UNITS,
+  }
+}
+
+function getHoopPosition(teamKey, quarter) {
+  const side = getAttackingSide(teamKey, quarter)
+
+  return {
+    side,
+    x: side === 'left' ? BASKET_X_FROM_BASELINE : COURT_WIDTH_UNITS - BASKET_X_FROM_BASELINE,
+    y: BASKET_Y_UNITS,
+  }
+}
+
+function isThreePointAttempt(location, teamKey, quarter) {
+  if (!location) return false
+
+  const point = toCourtUnits(location)
+  const hoop = getHoopPosition(teamKey, quarter)
+  const dyAbs = Math.abs(point.y - hoop.y)
+  const cornerYOffset = COURT_HEIGHT_UNITS / 2 - THREE_POINT_SIDE_OFFSET_UNITS
+  const arcJoinDx = Math.sqrt(
+    Math.max(0, THREE_POINT_RADIUS_UNITS ** 2 - cornerYOffset ** 2)
+  )
+
+  const isTowardCenterCourt =
+    hoop.side === 'left' ? point.x >= hoop.x : point.x <= hoop.x
+
+  if (!isTowardCenterCourt) {
+    return false
+  }
+
+  if (dyAbs >= cornerYOffset) {
+    const cornerLineX =
+      hoop.side === 'left' ? hoop.x + arcJoinDx : hoop.x - arcJoinDx
+
+    return hoop.side === 'left' ? point.x >= cornerLineX : point.x <= cornerLineX
+  }
+
+  const distanceFromHoop = Math.hypot(point.x - hoop.x, point.y - hoop.y)
+  return distanceFromHoop >= THREE_POINT_RADIUS_UNITS
+}
+
 function getSuggestedTeamKeyFromLocation(location, quarter) {
   if (!location) return 'home'
 
@@ -215,12 +277,7 @@ function getSuggestedTeamKeyFromLocation(location, quarter) {
 function getSuggestedShotTypeFromLocation(location, teamKey, quarter) {
   if (!location) return '2PT'
 
-  const basket = getBasketTarget(teamKey, quarter)
-  const dx = location.x - basket.x
-  const dy = (location.y - basket.y) * 1.28
-  const distance = Math.hypot(dx, dy)
-
-  return distance >= THREE_POINT_SUGGESTION_DISTANCE ? '3PT' : '2PT'
+  return isThreePointAttempt(location, teamKey, quarter) ? '3PT' : '2PT'
 }
 
 function findPlayerById(players, id) {
@@ -492,8 +549,7 @@ function getSeasonSummary(matches) {
   }
 
   matches.forEach((match) => {
-    const homeEvents = match.events.filter((evt) => evt.teamKey === 'home')
-    const statsMap = getPlayerStatsFromEvents(match.home.players, homeEvents)
+    const statsMap = getPlayerStatsFromEvents(match.home.players, match.events)
 
     totals.points += match.finalScore?.home || 0
     totals.wins += (match.finalScore?.home || 0) > (match.finalScore?.away || 0) ? 1 : 0
@@ -610,6 +666,24 @@ function getEventsByQuarter(events) {
   }
 }
 
+function getShotDisplayLabel(evt) {
+  if (evt.shotType === 'FT') return 'FT'
+  if (evt.isDunk) return 'DUNK'
+  return evt.shotType
+}
+
+function getShotValueLabel(evt) {
+  if (evt.isDunk) return 'DUNK'
+  if (evt.shotType === '2PT') return '2 POINTS'
+  if (evt.shotType === '3PT') return '3 POINTS'
+  return evt.shotType
+}
+
+function getEventPlayerLabel(player) {
+  if (!player) return '"UNKNOWN"'
+  return `"${getDisplayName(player)}"`
+}
+
 function describeEvent(evt, match) {
   if (evt.type === 'shot') {
     const team = match[evt.teamKey]
@@ -620,25 +694,25 @@ function describeEvent(evt, match) {
 
     if (evt.result === 'made') {
       if (evt.shotType === 'FT') {
-        return `${formatPlayer(shooter)} made FT ${evt.freeThrowNumber || 1} of ${evt.freeThrowTotal || 1}`
+        return `SCORE - ${getEventPlayerLabel(shooter)} FREE THROW ${evt.freeThrowNumber || 1}/${evt.freeThrowTotal || 1}`
       }
 
-      return `${formatPlayer(shooter)} made ${evt.shotType}${assister ? ` — AST ${formatPlayer(assister)}` : ''}`
+      return `SCORE - ${getEventPlayerLabel(shooter)} ${getShotValueLabel(evt)}${assister ? ` - AST ${getEventPlayerLabel(assister)}` : ''}`
     }
 
     if (evt.shotType === 'FT') {
-      return `${formatPlayer(shooter)} missed FT ${evt.freeThrowNumber || 1} of ${evt.freeThrowTotal || 1}`
+      return `MISS - ${getEventPlayerLabel(shooter)} FREE THROW ${evt.freeThrowNumber || 1}/${evt.freeThrowTotal || 1}`
     }
 
-    return `${formatPlayer(shooter)} missed ${evt.shotType}${blocker ? ` — BLK ${formatPlayer(blocker)}` : ''}`
+    return `MISS - ${getEventPlayerLabel(shooter)} ${getShotValueLabel(evt)}${blocker ? ` - BLOCK ${getEventPlayerLabel(blocker)}` : ''}`
   }
 
   if (evt.type === 'rebound') {
     const team = match[evt.teamKey]
     const player = evt.playerId ? findPlayerById(team.players, evt.playerId) : null
 
-    if (!player) return `${team.name} team rebound`
-    return `${formatPlayer(player)} ${evt.reboundType === 'oreb' ? 'offensive' : 'defensive'} rebound`
+    if (!player) return `REBOUND - "${team.name.toUpperCase()}" TEAM`
+    return `REBOUND - ${getEventPlayerLabel(player)} ${evt.reboundType === 'oreb' ? 'OFFENSIVE' : 'DEFENSIVE'}`
   }
 
   if (evt.type === 'foul') {
@@ -646,7 +720,7 @@ function describeEvent(evt, match) {
     const fouledTeam = evt.teamKey === 'home' ? match.away : match.home
     const fouler = findPlayerById(foulingTeam.players, evt.foulerId)
     const fouled = findPlayerById(fouledTeam.players, evt.fouledPlayerId)
-    return `${formatPlayer(fouler)} foul — ${formatPlayer(fouled)} fouled`
+    return `FOUL - ${getEventPlayerLabel(fouler)}${fouled ? ` - ON ${getEventPlayerLabel(fouled)}` : ''}`
   }
 
   if (evt.type === 'turnover') {
@@ -655,14 +729,14 @@ function describeEvent(evt, match) {
     const player = findPlayerById(team.players, evt.playerId)
     const stealer = evt.forcedByPlayerId ? findPlayerById(oppTeam.players, evt.forcedByPlayerId) : null
 
-    return `${formatPlayer(player)} turnover${stealer ? ` — STL ${formatPlayer(stealer)}` : ''}`
+    return stealer ? `STEAL - ${getEventPlayerLabel(stealer)} - TURNOVER ${getEventPlayerLabel(player)}` : `TURNOVER - ${getEventPlayerLabel(player)}`
   }
 
   if (evt.type === 'substitution') {
     const team = match[evt.teamKey]
     const outPlayer = findPlayerById(team.players, evt.playerOutId)
     const inPlayer = findPlayerById(team.players, evt.playerInId)
-    return `${formatPlayer(outPlayer)} out — ${formatPlayer(inPlayer)} in`
+    return `SUB - ${getEventPlayerLabel(outPlayer)} OUT - ${getEventPlayerLabel(inPlayer)} IN`
   }
 
   return 'Event'
@@ -678,25 +752,25 @@ function describeMatchEvent(evt, match) {
 
     if (evt.result === 'made') {
       if (evt.shotType === 'FT') {
-        return `${formatPlayer(shooter)} made FT ${evt.freeThrowNumber || 1} of ${evt.freeThrowTotal || 1}`
+        return `SCORE - ${getEventPlayerLabel(shooter)} FREE THROW ${evt.freeThrowNumber || 1}/${evt.freeThrowTotal || 1}`
       }
 
-      return `${formatPlayer(shooter)} made ${evt.shotType}${assister ? ` - AST ${formatPlayer(assister)}` : ''}`
+      return `SCORE - ${getEventPlayerLabel(shooter)} ${getShotValueLabel(evt)}${assister ? ` - AST ${getEventPlayerLabel(assister)}` : ''}`
     }
 
     if (evt.shotType === 'FT') {
-      return `${formatPlayer(shooter)} missed FT ${evt.freeThrowNumber || 1} of ${evt.freeThrowTotal || 1}`
+      return `MISS - ${getEventPlayerLabel(shooter)} FREE THROW ${evt.freeThrowNumber || 1}/${evt.freeThrowTotal || 1}`
     }
 
-    return `${formatPlayer(shooter)} missed ${evt.shotType}${blocker ? ` - BLK ${formatPlayer(blocker)}` : ''}`
+    return `MISS - ${getEventPlayerLabel(shooter)} ${getShotValueLabel(evt)}${blocker ? ` - BLOCK ${getEventPlayerLabel(blocker)}` : ''}`
   }
 
   if (evt.type === 'rebound') {
     const team = match[evt.teamKey]
     const player = evt.playerId ? findPlayerById(team.players, evt.playerId) : null
 
-    if (!player) return `${team.name} team rebound`
-    return `${formatPlayer(player)} ${evt.reboundType === 'oreb' ? 'offensive' : 'defensive'} rebound`
+    if (!player) return `REBOUND - "${team.name.toUpperCase()}" TEAM`
+    return `REBOUND - ${getEventPlayerLabel(player)} ${evt.reboundType === 'oreb' ? 'OFFENSIVE' : 'DEFENSIVE'}`
   }
 
   if (evt.type === 'foul') {
@@ -711,10 +785,10 @@ function describeMatchEvent(evt, match) {
     const possessionLabel = evt.retainsPossession ? ', possession retained' : ''
 
     if (fouled) {
-      return `${foulTypeLabel} foul - ${actorLabel} on ${formatPlayer(fouled)}${shotsLabel}${possessionLabel}`
+      return `FOUL - ${actorLabel.toUpperCase()} - ${foulTypeLabel.toUpperCase()} - ON ${getEventPlayerLabel(fouled)}${shotsLabel}${possessionLabel}`
     }
 
-    return `${foulTypeLabel} foul - ${actorLabel}${shotsLabel}${possessionLabel}`
+    return `FOUL - ${actorLabel.toUpperCase()} - ${foulTypeLabel.toUpperCase()}${shotsLabel}${possessionLabel}`
   }
 
   if (evt.type === 'turnover') {
@@ -723,14 +797,14 @@ function describeMatchEvent(evt, match) {
     const player = findPlayerById(team.players, evt.playerId)
     const stealer = evt.forcedByPlayerId ? findPlayerById(oppTeam.players, evt.forcedByPlayerId) : null
 
-    return `${formatPlayer(player)} turnover${stealer ? ` - STL ${formatPlayer(stealer)}` : ''}`
+    return stealer ? `STEAL - ${getEventPlayerLabel(stealer)} - TURNOVER ${getEventPlayerLabel(player)}` : `TURNOVER - ${getEventPlayerLabel(player)}`
   }
 
   if (evt.type === 'substitution') {
     const team = match[evt.teamKey]
     const outPlayer = findPlayerById(team.players, evt.playerOutId)
     const inPlayer = findPlayerById(team.players, evt.playerInId)
-    return `${formatPlayer(outPlayer)} out - ${formatPlayer(inPlayer)} in`
+    return `SUB - ${getEventPlayerLabel(outPlayer)} OUT - ${getEventPlayerLabel(inPlayer)} IN`
   }
 
   return 'Event'
@@ -871,6 +945,7 @@ export default function App() {
     teamKey: '',
     shooterId: '',
     shotType: '',
+    isDunk: false,
     shotLocation: null,
   })
 
@@ -914,6 +989,7 @@ export default function App() {
     shooterTeamKey: '',
     shooterId: '',
     shotType: '',
+    isDunk: false,
     location: null,
     suggestedTeamKey: 'home',
     suggestedShotType: '2PT',
@@ -921,6 +997,13 @@ export default function App() {
   const [courtReboundPrompt, setCourtReboundPrompt] = useState({
     open: false,
     relatedShotEventId: '',
+  })
+  const [blockPrompt, setBlockPrompt] = useState({
+    open: false,
+    step: 'ask',
+    relatedShotEventId: '',
+    shotTeamKey: '',
+    promptForRebound: false,
   })
   const [pendingActionSelection, setPendingActionSelection] = useState({
     open: false,
@@ -1405,13 +1488,13 @@ export default function App() {
 
   const homeStats = useMemo(() => {
     if (!currentMatch) return {}
-    return getPlayerStatsFromEvents(currentMatch.home.players, homeEvents)
-  }, [currentMatch, homeEvents])
+    return getPlayerStatsFromEvents(currentMatch.home.players, allEvents)
+  }, [currentMatch, allEvents])
 
   const awayStats = useMemo(() => {
     if (!currentMatch) return {}
-    return getPlayerStatsFromEvents(currentMatch.away.players, awayEvents)
-  }, [currentMatch, awayEvents])
+    return getPlayerStatsFromEvents(currentMatch.away.players, allEvents)
+  }, [currentMatch, allEvents])
 
   const homeTotals = useMemo(() => {
     if (!currentMatch) return getTeamTotals(homeTeam.players, [])
@@ -1795,6 +1878,7 @@ export default function App() {
       shooterTeamKey: '',
       shooterId: '',
       shotType: '',
+      isDunk: false,
       location: null,
       suggestedTeamKey: 'home',
       suggestedShotType: '2PT',
@@ -1805,6 +1889,16 @@ export default function App() {
     setCourtReboundPrompt({
       open: false,
       relatedShotEventId: '',
+    })
+  }
+
+  function closeBlockPrompt() {
+    setBlockPrompt({
+      open: false,
+      step: 'ask',
+      relatedShotEventId: '',
+      shotTeamKey: '',
+      promptForRebound: false,
     })
   }
 
@@ -1854,6 +1948,7 @@ export default function App() {
       shooterTeamKey: '',
       shooterId: '',
       shotType: mode === 'made' ? suggestedShotType : '',
+      isDunk: false,
       location,
       suggestedTeamKey,
       suggestedShotType,
@@ -1861,14 +1956,18 @@ export default function App() {
   }
 
   function chooseCourtShotType(shotType) {
+    const normalizedShotType = shotType === 'DUNK' ? '2PT' : shotType
+    const isDunk = shotType === 'DUNK'
+
     if (courtShotFlow.mode === 'missed' && courtShotFlow.shooterId && courtShotFlow.shooterTeamKey) {
       recordShot({
         teamKey: courtShotFlow.shooterTeamKey,
         shooterId: courtShotFlow.shooterId,
-        shotType,
+        shotType: normalizedShotType,
         result: 'missed',
         shotLocation: courtShotFlow.location,
         promptForRebound: true,
+        isDunk: false,
       })
       closeCourtShotFlow()
       return
@@ -1876,7 +1975,8 @@ export default function App() {
 
     setCourtShotFlow((prev) => ({
       ...prev,
-      shotType,
+      shotType: normalizedShotType,
+      isDunk,
       step: 'awaitSelection',
     }))
   }
@@ -1903,6 +2003,7 @@ export default function App() {
       result: courtShotFlow.mode === 'made' ? 'made' : 'missed',
       shotLocation: courtShotFlow.location,
       promptForRebound: courtShotFlow.mode === 'missed',
+      isDunk: courtShotFlow.mode === 'made' ? courtShotFlow.isDunk : false,
     })
     closeCourtShotFlow()
   }
@@ -2011,7 +2112,84 @@ export default function App() {
     }
   }
 
-  function recordShot({ teamKey, shooterId, shotType, result, shotLocation = null, promptForRebound = false }) {
+  function continueMissedShotFlow(shotEventId, promptForRebound = false, mode = 'auto') {
+    if (!shotEventId) return
+
+    if (mode === 'none') {
+      return
+    }
+
+    if (mode === 'prompt' && promptForRebound) {
+      setCourtReboundPrompt({
+        open: true,
+        relatedShotEventId: shotEventId,
+      })
+      return
+    }
+
+    setReboundModal({
+      open: true,
+      relatedShotEventId: shotEventId,
+      mode: 'choice',
+      reboundType: '',
+      pickerTeamKey: '',
+      playerId: '',
+    })
+  }
+
+  function chooseMissOutcome(outcome) {
+    if (!blockPrompt.open) return
+
+    if (outcome === 'none') {
+      closeBlockPrompt()
+      return
+    }
+
+    if (outcome === 'rebound') {
+      const relatedShotEventId = blockPrompt.relatedShotEventId
+      closeBlockPrompt()
+      continueMissedShotFlow(relatedShotEventId, false, 'choice')
+      return
+    }
+
+    setBlockPrompt((prev) => ({
+      ...prev,
+      step: 'picker',
+    }))
+  }
+
+  function chooseBlocker(playerId) {
+    if (!currentMatch || !blockPrompt.relatedShotEventId || !playerId) return
+
+    const updatedMatch = {
+      ...currentMatch,
+      events: currentMatch.events.map((evt) =>
+        evt.id === blockPrompt.relatedShotEventId
+          ? {
+              ...evt,
+              blockerId: playerId,
+            }
+          : evt
+      ),
+    }
+
+    const relatedShotEventId = blockPrompt.relatedShotEventId
+
+    setCurrentMatch(updatedMatch)
+    flashPlayer(playerId, 'player-made')
+    closeBlockPrompt()
+    continueMissedShotFlow(relatedShotEventId, false, 'none')
+  }
+
+  function recordShot({
+    teamKey,
+    shooterId,
+    shotType,
+    result,
+    shotLocation = null,
+    promptForRebound = false,
+    isDunk = false,
+  }) {
     if (!currentMatch || !teamKey || !shooterId || !shotType) return
 
     const team = currentMatch[teamKey]
@@ -2035,6 +2213,7 @@ export default function App() {
         teamKey,
         shooterId,
         shotType,
+        isDunk,
         shotLocation,
       })
       return
@@ -2061,6 +2240,7 @@ export default function App() {
       points,
       lineupSnapshot,
       shotLocation,
+      isDunk,
     })
 
     const updatedMatch = {
@@ -2072,19 +2252,12 @@ export default function App() {
 
     if (result === 'missed') {
       flashPlayer(shooterId, 'player-missed')
-      if (promptForRebound) {
-        setCourtReboundPrompt({
-          open: true,
-          relatedShotEventId: shotEvent.id,
-        })
-        return
-      }
-      setReboundModal({
+      setBlockPrompt({
         open: true,
+        step: 'ask',
         relatedShotEventId: shotEvent.id,
-        mode: 'choice',
-        reboundType: '',
-        pickerTeamKey: '',
+        shotTeamKey: teamKey,
+        promptForRebound,
       })
       return
     }
@@ -2110,7 +2283,7 @@ export default function App() {
   function completeMadeBasket(assistPlayerId = null) {
     if (!currentMatch || !assistModal.open) return
 
-    const { teamKey, shooterId, shotType, shotLocation } = assistModal
+    const { teamKey, shooterId, shotType, isDunk, shotLocation } = assistModal
     const team = currentMatch[teamKey]
     const lineupSnapshot = [...team.onCourt]
 
@@ -2126,6 +2299,7 @@ export default function App() {
       points: shotType === '2PT' ? 2 : 3,
       lineupSnapshot,
       shotLocation,
+      isDunk,
     })
 
     setCurrentMatch({
@@ -2143,6 +2317,7 @@ export default function App() {
       teamKey: '',
       shooterId: '',
       shotType: '',
+      isDunk: false,
       shotLocation: null,
     })
   }
@@ -2346,15 +2521,26 @@ export default function App() {
       const teamEvents = updatedMatch.events.filter((e) => e.teamKey === foulerTeamKey)
       const teamStats = getPlayerStatsFromEvents(team.players, teamEvents)
       const fouls = teamStats[foulerId]?.foul || 0
+      const unsportsmanlikeFouls = getPlayerFoulTypeCount(teamEvents, foulerTeamKey, foulerId, 'unsportsmanlike')
+      const disqualifyingFouls = getPlayerFoulTypeCount(teamEvents, foulerTeamKey, foulerId, 'disqualifying')
+      const player = findPlayerById(team.players, foulerId)
 
       if (fouls === 4) {
-        const player = findPlayerById(team.players, foulerId)
         alert(`${formatPlayer(player)} is on 4 fouls.`)
       }
 
-      if (fouls >= 5) {
-        const player = findPlayerById(team.players, foulerId)
-        alert(`${formatPlayer(player)} has fouled out and must be substituted.`)
+      const mustBeEjected = fouls >= 5 || disqualifyingFouls >= 1 || unsportsmanlikeFouls >= 2
+
+      if (mustBeEjected) {
+        let message = `${formatPlayer(player)} has fouled out and must be substituted.`
+
+        if (disqualifyingFouls >= 1) {
+          message = `${formatPlayer(player)} has been disqualified and must be ejected and substituted.`
+        } else if (unsportsmanlikeFouls >= 2) {
+          message = `${formatPlayer(player)} has 2 unsportsmanlike fouls and must be ejected and substituted.`
+        }
+
+        alert(message)
 
         if (team.onCourt.includes(foulerId)) {
           setSubModal({
@@ -2370,10 +2556,10 @@ export default function App() {
 
     const coachFouls = getCoachFoulCount(updatedMatch.events, foulerTeamKey)
     if (coachFouls === COACH_FOUL_LIMIT - 1) {
-      alert(`${updatedMatch[foulerTeamKey].name} coach is on ${coachFouls} fouls.`)
+      alert(`${getCoachDisplayName(updatedMatch[foulerTeamKey].coachName)} is on ${coachFouls} technical fouls.`)
     }
     if (coachFouls >= COACH_FOUL_LIMIT) {
-      alert(`${updatedMatch[foulerTeamKey].name} coach has reached ${coachFouls} fouls.`)
+      alert(`${getCoachDisplayName(updatedMatch[foulerTeamKey].coachName)} has been ejected on ${coachFouls} technical fouls.`)
     }
   }
 
@@ -3101,6 +3287,14 @@ export default function App() {
     id,
     ...config,
   }))
+  const blockPickerOptions =
+    blockPrompt.open && currentMatch
+      ? getOnCourtPlayers(blockPrompt.shotTeamKey === 'home' ? 'away' : 'home')
+      : []
+  const blockPromptShot =
+    blockPrompt.open && currentMatch
+      ? currentMatch.events.find((evt) => evt.id === blockPrompt.relatedShotEventId)
+      : null
 
   const reboundPickerOptions =
     reboundModal.open && reboundModal.mode === 'player' && currentMatch
@@ -3702,6 +3896,7 @@ export default function App() {
           className={`live-court-page ${
             courtShotFlow.open || pendingActionSelection.open ? 'shot-capture-mode' : ''
           } ${pendingActionSelection.open && pendingActionSelection.action === 'foul' ? 'foul-pick-mode' : ''}`}
+          onContextMenu={(e) => e.preventDefault()}
         >
           <div className="court-background">
             <div className="court-overlay-lines" />
@@ -4067,19 +4262,15 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="modal-subtext">
-                  {courtShotFlow.mode === 'made'
-                    ? `Suggested ${courtShotFlow.suggestedShotType} from the tap location. Choose the shot type, then tap the player banner.`
-                    : courtShotFlow.shooterId
-                      ? `Suggested ${courtShotFlow.suggestedShotType} from the tap location. Choose whether the miss was a 2PT or 3PT attempt.`
-                      : `Likely ${currentMatch?.[courtShotFlow.suggestedTeamKey || 'home']?.name || 'team'} attack. Choose the shot type first, then tap the player banner.`}
-                </div>
-
-                <div className="pill-row">
-                  {['2PT', '3PT'].map((type) => (
+                <div className="pill-row big-shot-type-row">
+                  {(courtShotFlow.mode === 'made' ? ['DUNK', '2PT', '3PT'] : ['2PT', '3PT']).map((type) => (
                     <button
                       key={type}
-                      className={`pill-btn ${courtShotFlow.shotType === type ? 'active' : ''}`}
+                      className={`pill-btn big-shot-type-btn ${
+                        (type === 'DUNK' ? courtShotFlow.isDunk : courtShotFlow.shotType === type && !courtShotFlow.isDunk)
+                          ? 'active'
+                          : ''
+                      }`}
                       onClick={() => chooseCourtShotType(type)}
                     >
                       {type}
@@ -4093,7 +4284,7 @@ export default function App() {
           {courtShotFlow.step === 'awaitSelection' && (
             <div className="court-shot-hint">
               {courtShotFlow.mode === 'made'
-                ? `Shot tagged as ${courtShotFlow.shotType}. Likely ${currentMatch?.[courtShotFlow.suggestedTeamKey || 'home']?.name || 'team'} attack. Tap the player who scored.`
+                ? `Shot tagged as ${courtShotFlow.isDunk ? 'DUNK' : courtShotFlow.shotType}. Likely ${currentMatch?.[courtShotFlow.suggestedTeamKey || 'home']?.name || 'team'} attack. Tap the player who scored.`
                 : courtShotFlow.shotType
                   ? `Miss tagged as ${courtShotFlow.shotType}. Tap the player who missed.`
                   : `Likely ${currentMatch?.[courtShotFlow.suggestedTeamKey || 'home']?.name || 'team'} attack. Tap the player who missed, then choose 2PT or 3PT.`}
@@ -4140,6 +4331,56 @@ export default function App() {
                 No
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {blockPrompt.open && (
+        <div className="modal-overlay" onClick={closeBlockPrompt}>
+          <div className="modal-card compact-shot-type-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-top">
+              <h3>
+                {blockPrompt.step === 'ask'
+                  ? `${blockPromptShot?.shotType || 'Shot'} Miss`
+                  : 'Who Got The Block?'}
+              </h3>
+              <button className="modal-close" onClick={closeBlockPrompt}>
+                x
+              </button>
+            </div>
+
+            {blockPrompt.step === 'ask' ? (
+              <>
+                <div className="modal-subtext">Choose what happened on the miss.</div>
+                <div className="pill-row big-shot-type-row miss-outcome-row">
+                  <button className="pill-btn big-shot-type-btn miss-outcome-btn" onClick={() => chooseMissOutcome('block')}>
+                    Blocked
+                  </button>
+                  <button className="pill-btn big-shot-type-btn miss-outcome-btn" onClick={() => chooseMissOutcome('rebound')}>
+                    Rebound
+                  </button>
+                  <button className="pill-btn big-shot-type-btn miss-outcome-btn" onClick={() => chooseMissOutcome('none')}>
+                    Dead Ball
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="modal-subtext">Choose the defender who got the block.</div>
+                <div className="bench-list">
+                  {blockPickerOptions.map((player) => (
+                    <button
+                      key={player.id}
+                      className="bench-item"
+                      onClick={() => chooseBlocker(player.id)}
+                    >
+                      <div className="avatar">#{player.number}</div>
+                      <div className="bench-name">{formatPlayer(player)}</div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -4194,7 +4435,7 @@ export default function App() {
         <div
           className="modal-overlay"
           onClick={() =>
-            setAssistModal({ open: false, teamKey: '', shooterId: '', shotType: '', shotLocation: null })
+            setAssistModal({ open: false, teamKey: '', shooterId: '', shotType: '', isDunk: false, shotLocation: null })
           }
         >
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
@@ -4203,7 +4444,7 @@ export default function App() {
               <button
                 className="modal-close"
                 onClick={() =>
-                  setAssistModal({ open: false, teamKey: '', shooterId: '', shotType: '', shotLocation: null })
+                  setAssistModal({ open: false, teamKey: '', shooterId: '', shotType: '', isDunk: false, shotLocation: null })
                 }
               >
                 ✕
@@ -4212,7 +4453,7 @@ export default function App() {
 
             <div className="modal-subtext">
               {assistScorer
-                ? `${formatPlayer(assistScorer)} made ${assistModal.shotType}. Who assisted?`
+                ? `${formatPlayer(assistScorer)} made ${assistModal.isDunk ? 'DUNK' : assistModal.shotType}. Who assisted?`
                 : 'Choose an assisting player'}
             </div>
 
@@ -4744,7 +4985,14 @@ export default function App() {
                         const running = getRunningScoreUntil(currentMatch.events, evt.id)
 
                         return (
-                          <div key={evt.id} className={`log-row log-row-${evt.type}`}>
+                          <div
+                            key={evt.id}
+                            className={`log-row ${
+                              evt.type === 'shot'
+                                ? `log-row-shot-${evt.result === 'made' ? 'made' : 'missed'}`
+                                : `log-row-${evt.type}`
+                            }`}
+                          >
                             <div className="log-main">
                               <div className="log-desc">{describeMatchEvent(evt, currentMatch)}</div>
                               <div className="log-score-mini">
@@ -4873,3 +5121,6 @@ export default function App() {
     </div>
   )
 }
+
+
+

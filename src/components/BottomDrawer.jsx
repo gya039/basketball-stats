@@ -232,7 +232,14 @@ export default function BottomDrawer({
                     const running = getRunningScoreUntil(currentMatch.events, evt.id)
 
                     return (
-                      <div key={evt.id} className={`log-row log-row-${evt.type}`}>
+                      <div
+                        key={evt.id}
+                        className={`log-row ${
+                          evt.type === 'shot'
+                            ? `log-row-shot-${evt.result === 'made' ? 'made' : 'missed'}`
+                            : `log-row-${evt.type}`
+                        }`}
+                      >
                         <div className="log-main">
                           <div className="log-desc">{describeEvent(evt, currentMatch)}</div>
                           <div className="log-score-mini">

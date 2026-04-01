@@ -1679,7 +1679,7 @@ button {
 .side-team-column {
   display: grid;
   grid-template-rows: minmax(0, 1.1fr) repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
   min-height: 0;
   height: 100%;
 }
@@ -1705,8 +1705,8 @@ button {
   flex-direction: column;
   justify-content: flex-start;
   gap: 5px;
-  padding: 10px 10px 11px;
-  font-size: 10px;
+  padding: 12px 12px 13px;
+  font-size: 11px;
   font-weight: 800;
   line-height: 1.1;
   box-shadow: 0 14px 24px rgba(0, 0, 0, 0.24);
@@ -1733,7 +1733,7 @@ button {
 }
 
 .side-staff-btn strong {
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1;
 }
 
@@ -1769,7 +1769,7 @@ button {
   gap: 5px;
   text-align: left;
   box-shadow: 0 16px 28px rgba(0, 0, 0, 0.24);
-  padding: 8px 8px 8px 12px;
+  padding: 10px 10px 10px 14px;
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
   position: relative;
   overflow: hidden;
@@ -1826,13 +1826,13 @@ button {
 }
 
 .side-player-number {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 900;
   line-height: 0.86;
 }
 
 .side-player-name {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   line-height: 1;
   letter-spacing: 0.04em;
@@ -1844,7 +1844,7 @@ button {
   gap: 4px;
   flex-wrap: wrap;
   align-items: center;
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 900;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -2689,6 +2689,34 @@ button {
   max-width: 420px;
 }
 
+.big-shot-type-row {
+  justify-content: center;
+  gap: 14px;
+  padding-top: 6px;
+}
+
+.big-shot-type-btn {
+  min-width: 124px;
+  min-height: 70px;
+  padding: 18px 22px;
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  border-radius: 22px;
+}
+
+.miss-outcome-row {
+  gap: 12px;
+}
+
+.miss-outcome-btn {
+  min-width: 136px;
+  min-height: 76px;
+  font-size: 21px;
+  line-height: 1.05;
+  letter-spacing: 0.01em;
+}
+
 .court-shot-hint {
   position: fixed;
   left: 50%;
@@ -2893,6 +2921,20 @@ button {
 
 .log-row-shot {
   border-left-color: rgba(34, 197, 94, 0.9);
+}
+
+.log-row-shot-made {
+  border-left-color: rgba(34, 197, 94, 0.92);
+  background:
+    linear-gradient(90deg, rgba(22, 163, 74, 0.12), rgba(255, 255, 255, 0.04) 22%),
+    rgba(255, 255, 255, 0.04);
+}
+
+.log-row-shot-missed {
+  border-left-color: rgba(249, 115, 22, 0.92);
+  background:
+    linear-gradient(90deg, rgba(249, 115, 22, 0.12), rgba(255, 255, 255, 0.04) 22%),
+    rgba(255, 255, 255, 0.04);
 }
 
 .log-row-rebound {
@@ -4363,7 +4405,7 @@ button {
 
   .side-team-column {
     grid-template-rows: minmax(0, 1.05fr) repeat(5, minmax(0, 1fr));
-    gap: 4px;
+    gap: 6px;
     min-height: 0;
     height: 100%;
   }
@@ -4371,7 +4413,7 @@ button {
   .side-staff-btn {
     min-height: 0;
     height: 100%;
-    padding: 6px 6px 7px 8px;
+    padding: 8px 8px 9px 10px;
     gap: 2px;
     border-radius: 12px;
   }
@@ -4379,17 +4421,17 @@ button {
   .side-staff-kicker,
   .side-staff-btn small,
   .side-staff-btn em {
-    font-size: 7px;
+    font-size: 8px;
   }
 
   .side-staff-btn strong {
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .side-player {
     min-height: 0;
     height: 100%;
-    padding: 5px 5px 5px 9px;
+    padding: 7px 7px 7px 11px;
     gap: 4px;
     border-radius: 12px;
   }
@@ -4400,16 +4442,16 @@ button {
   }
 
   .side-player-number {
-    font-size: 13px;
+    font-size: 15px;
   }
 
   .side-player-name {
-    font-size: 8px;
+    font-size: 9px;
   }
 
   .side-player-statline,
   .side-player-statline span {
-    font-size: 7px;
+    font-size: 8px;
   }
 
   .side-player-statline {

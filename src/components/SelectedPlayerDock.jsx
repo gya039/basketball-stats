@@ -76,6 +76,8 @@ export default function SelectedPlayerDock({
                     <span>{selectedStats.pts} PTS</span>
                     <span>{selectedStats.reb} REB</span>
                     <span>{selectedStats.ast} AST</span>
+                    <span>{selectedStats.stl} STL</span>
+                    <span>{selectedStats.blk} BLK</span>
                     <span>{selectedStats.foul} PF</span>
                   </div>
                 )}
