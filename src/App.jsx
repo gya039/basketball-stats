@@ -4768,23 +4768,22 @@ export default function App() {
               </>
             )}
 
-            {turnoverModal.step === 'violationType' && (
-              <>
-                <div className="modal-subtext">What kind of violation was it?</div>
-                <div className="bench-list">
-                  {TURNOVER_VIOLATION_OPTIONS.map((option) => (
-                    <button
-                      key={option.id}
-                      className="bench-item"
-                      onClick={() => chooseTurnoverViolationType(option.id)}
-                    >
-                      <div className="avatar">V</div>
-                      <div className="bench-name">{option.label}</div>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
+              {turnoverModal.step === 'violationType' && (
+                <>
+                  <div className="modal-subtext">What kind of violation was it?</div>
+                  <div className="violation-type-grid">
+                    {TURNOVER_VIOLATION_OPTIONS.map((option) => (
+                      <button
+                        key={option.id}
+                        className="violation-type-btn"
+                        onClick={() => chooseTurnoverViolationType(option.id)}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
 
             {turnoverModal.step === 'steal' && (
               <div className="modal-subtext">Was the turnover forced as a steal?</div>
