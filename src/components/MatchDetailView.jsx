@@ -27,6 +27,10 @@ function findPlayerById(players, id) {
   return players.find((p) => p.id === id)
 }
 
+function getDisplayName(player) {
+  return player?.name || 'Unknown'
+}
+
 function formatPlayer(player) {
   if (!player) return ''
   return `${player.name} (#${player.number})`
@@ -310,7 +314,7 @@ function renderBoxScore(teamName, players, statsMap, totals) {
 }
 
 function getAttackingSide(teamKey, quarter) {
-  const homeSide = quarter >= 3 ? 'left' : 'right'
+  const homeSide = quarter >= 3 ? 'right' : 'left'
   if (teamKey === 'home') return homeSide
   return homeSide === 'left' ? 'right' : 'left'
 }
@@ -430,6 +434,50 @@ function buildHeatGrid(shots, columns = 24, rows = 14) {
   }))
 }
 
+function downloadHeatMapSvg(teamName, shots) {
+  const heatCells = buildHeatGrid(shots)
+  const rects = heatCells
+    .map((cell) => {
+      const style = getHeatCellStyle(cell)
+      return `<rect x="${cell.x}" y="${cell.y}" width="${cell.width}" height="${cell.height}" rx="1.4" fill="${style.background}" fill-opacity="${style.opacity}" filter="url(#blurHeat)" />`
+    })
+    .join('')
+
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 150">
+  <defs>
+    <filter id="blurHeat"><feGaussianBlur stdDeviation="1.6" /></filter>
+    <pattern id="wood" width="34" height="150" patternUnits="userSpaceOnUse">
+      <rect width="34" height="150" fill="#8a5a2a" />
+      <rect x="17" width="17" height="150" fill="#986534" />
+    </pattern>
+  </defs>
+  <rect width="140" height="150" rx="10" fill="url(#wood)" />
+  ${rects}
+  <g stroke="rgba(255,255,255,0.25)" stroke-width="1.4" fill="none" stroke-linecap="round">
+    <line x1="140" y1="9" x2="110.1" y2="9" />
+    <line x1="140" y1="141" x2="110.1" y2="141" />
+    <path d="M 110.1 9 A 67.5 67.5 0 0 0 110.1 141" />
+    <line x1="140" y1="50.5" x2="82" y2="50.5" />
+    <line x1="140" y1="99.5" x2="82" y2="99.5" />
+    <line x1="82" y1="50.5" x2="82" y2="99.5" />
+    <path d="M 82 57 A 18 18 0 0 0 82 93" />
+    <path d="M 82 57 A 18 18 0 0 1 82 93" stroke-dasharray="5 3" />
+    <path d="M 124.25 62.5 A 12.5 12.5 0 0 0 124.25 87.5" />
+  </g>
+</svg>`
+
+  const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${teamName.toLowerCase().replace(/[^a-z0-9]+/gi, '-')}-heat-map.svg`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
+}
+
 function renderShotMap(teamName, shots) {
   const heatCells = buildHeatGrid(shots)
 
@@ -443,13 +491,37 @@ function renderShotMap(teamName, shots) {
 
         <div className="match-detail-inline-stats">
           <span>{shots.length} charted shots</span>
+          <button
+            className="mini-panel-btn shot-map-download-btn"
+            onClick={() => downloadHeatMapSvg(teamName, shots)}
+          >
+            Download Heat Map
+          </button>
         </div>
       </div>
 
       <div className="shot-map-wrap">
         <div className="shot-map-court folded-half-court">
-          <div className="shot-map-half right" />
-          <div className="shot-map-center-circle" />
+          <svg
+            className="shot-map-lines-svg"
+            viewBox="140 0 140 150"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <g stroke="rgba(255,255,255,0.25)" strokeWidth="1.4" fill="none" strokeLinecap="round">
+              <line x1="280" y1="9" x2="250.1" y2="9" />
+              <line x1="280" y1="141" x2="250.1" y2="141" />
+              <path d="M 250.1 9 A 67.5 67.5 0 0 0 250.1 141" />
+
+              <line x1="280" y1="50.5" x2="222" y2="50.5" />
+              <line x1="280" y1="99.5" x2="222" y2="99.5" />
+              <line x1="222" y1="50.5" x2="222" y2="99.5" />
+              <path d="M 222 57 A 18 18 0 0 0 222 93" />
+              <path d="M 222 57 A 18 18 0 0 1 222 93" strokeDasharray="5 3" />
+              <path d="M 264.25 62.5 A 12.5 12.5 0 0 0 264.25 87.5" />
+            </g>
+          </svg>
 
           {heatCells.map((cell) => (
             <div
@@ -478,7 +550,7 @@ function renderShotMap(teamName, shots) {
   )
 }
 
-export default function MatchDetailView({ match, onBack }) {
+export default function MatchDetailView({ match, onBack, onDeleteMatch }) {
   const events = match.events || []
   const groupedLog = getEventsByQuarter(events)
   const homeStats = getPlayerStatsFromEvents(match.home.players, events)
@@ -517,6 +589,9 @@ export default function MatchDetailView({ match, onBack }) {
           <div className="section-title">Saved Match</div>
           <h2>Match Detail</h2>
         </div>
+        <button className="danger-outline-btn" onClick={onDeleteMatch}>
+          Discard Match
+        </button>
       </div>
 
       <div className="match-detail-hero">

@@ -14,6 +14,9 @@ const STORAGE_KEYS = {
   savedMatches: 'basketball_saved_matches_v11',
   currentMatch: 'basketball_current_match_v11',
   homeCoachName: 'basketball_home_coach_name_v11',
+  homeInjuredPlayers: 'basketball_home_injured_players_v1',
+  discardedMatchIds: 'basketball_discarded_match_ids_v1',
+  selectedHomeTeamId: 'basketball_selected_home_team_id_v1',
 }
 
 const HOME_TEAM_COLOR = '#7b1e2b'
@@ -207,9 +210,18 @@ function getLastName(player) {
 }
 
 function getAttackingSide(teamKey, quarter) {
-  const homeSide = quarter >= 3 ? 'left' : 'right'
+  const homeSide = quarter >= 3 ? 'right' : 'left'
   if (teamKey === 'home') return homeSide
   return homeSide === 'left' ? 'right' : 'left'
+}
+
+function getFoldedShotX(teamKey, quarter, x) {
+  return getAttackingSide(teamKey, quarter) === 'left' ? 100 - x : x
+}
+
+function getHalfCourtShotX(teamKey, quarter, x) {
+  const foldedX = getFoldedShotX(teamKey, quarter, x)
+  return Math.max(0, Math.min(100, (foldedX - 50) * 2))
 }
 
 function getBasketTarget(teamKey, quarter) {
@@ -506,6 +518,14 @@ function getTeamTotals(players, events) {
 
 function addStatLine(target, source) {
   target.pts += source.pts
+  target.fgm += source.fgm
+  target.fga += source.fga
+  target.tpm += source.tpm
+  target.tpa += source.tpa
+  target.ftm += source.ftm
+  target.fta += source.fta
+  target.oreb += source.oreb
+  target.dreb += source.dreb
   target.reb += source.reb
   target.ast += source.ast
   target.stl += source.stl
@@ -549,6 +569,7 @@ function getSeasonSummary(matches) {
   }
 
   matches.forEach((match) => {
+    if (!match?.home?.players || !Array.isArray(match.home.players)) return
     const statsMap = getPlayerStatsFromEvents(match.home.players, match.events)
 
     totals.points += match.finalScore?.home || 0
@@ -565,14 +586,8 @@ function getSeasonSummary(matches) {
           id: player.id,
           name: player.name,
           number: player.number,
+          ...getEmptyStatLine(),
           games: 0,
-          pts: 0,
-          reb: 0,
-          ast: 0,
-          stl: 0,
-          blk: 0,
-          tov: 0,
-          foul: 0,
           mvpScore: 0,
         })
       }
@@ -600,6 +615,213 @@ function getSeasonSummary(matches) {
       mvpScore: getLeaderBy(players, 'mvpScore'),
     },
   }
+}
+
+function roundAverage(value, games) {
+  if (!games) return 0
+  return Math.round((value / games) * 10) / 10
+}
+
+function downloadTextFile(contents, filename, type = 'text/plain;charset=utf-8;') {
+  const blob = new Blob([contents], { type })
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
+}
+
+function getMadeHeatColor(intensity) {
+  if (intensity >= 0.86) return 'rgba(220, 38, 38, 0.94)'
+  if (intensity >= 0.66) return 'rgba(234, 88, 12, 0.9)'
+  if (intensity >= 0.46) return 'rgba(245, 158, 11, 0.84)'
+  if (intensity >= 0.24) return 'rgba(250, 204, 21, 0.7)'
+  return 'rgba(254, 240, 138, 0.52)'
+}
+
+function getMissHeatColor(intensity) {
+  if (intensity >= 0.86) return 'rgba(37, 99, 235, 0.94)'
+  if (intensity >= 0.66) return 'rgba(6, 182, 212, 0.9)'
+  if (intensity >= 0.46) return 'rgba(16, 185, 129, 0.84)'
+  if (intensity >= 0.24) return 'rgba(74, 222, 128, 0.72)'
+  return 'rgba(167, 243, 208, 0.54)'
+}
+
+function getHeatCellStyle(cell) {
+  const opacity = Math.min(0.24 + cell.volumeIntensity * 0.76, 0.96)
+
+  if (cell.made > 0 && cell.missed > 0) {
+    const madeColor = getMadeHeatColor(cell.madeIntensity)
+    const missColor = getMissHeatColor(cell.missedIntensity)
+    return {
+      background: `linear-gradient(135deg, ${missColor} 0%, ${missColor} 46%, ${madeColor} 54%, ${madeColor} 100%)`,
+      opacity,
+    }
+  }
+
+  if (cell.made > 0) {
+    return {
+      background: getMadeHeatColor(cell.madeIntensity),
+      opacity,
+    }
+  }
+
+  return {
+    background: getMissHeatColor(cell.missedIntensity),
+    opacity,
+  }
+}
+
+function buildHeatGrid(shots, columns = 24, rows = 14) {
+  const buckets = new Map()
+
+  shots.forEach((shot) => {
+    const column = Math.max(0, Math.min(columns - 1, Math.floor((shot.x / 100) * columns)))
+    const row = Math.max(0, Math.min(rows - 1, Math.floor((shot.y / 100) * rows)))
+    const key = `${column}-${row}`
+
+    if (!buckets.has(key)) {
+      buckets.set(key, {
+        column,
+        row,
+        total: 0,
+        made: 0,
+        missed: 0,
+      })
+    }
+
+    const bucket = buckets.get(key)
+    bucket.total += 1
+    if (shot.result === 'made') {
+      bucket.made += 1
+    } else {
+      bucket.missed += 1
+    }
+  })
+
+  const cells = [...buckets.values()]
+  const maxTotal = cells.reduce((best, cell) => Math.max(best, cell.total), 0)
+  const maxMade = cells.reduce((best, cell) => Math.max(best, cell.made), 0)
+  const maxMissed = cells.reduce((best, cell) => Math.max(best, cell.missed), 0)
+
+  return cells.map((cell) => ({
+    ...cell,
+    volumeIntensity: maxTotal > 0 ? cell.total / maxTotal : 0,
+    madeIntensity: maxMade > 0 ? cell.made / maxMade : 0,
+    missedIntensity: maxMissed > 0 ? cell.missed / maxMissed : 0,
+    x: (cell.column / columns) * 100,
+    y: (cell.row / rows) * 100,
+    width: 100 / columns,
+    height: 100 / rows,
+  }))
+}
+
+function getSeasonShotMap(matches, teamKey = 'home', playerId = null) {
+  const shots = []
+
+  matches.forEach((match) => {
+    const events = Array.isArray(match?.events) ? match.events : []
+    events.forEach((evt) => {
+      if (
+        evt.type !== 'shot' ||
+        evt.teamKey !== teamKey ||
+        evt.shotType === 'FT' ||
+        !evt.shotLocation ||
+        typeof evt.shotLocation.x !== 'number' ||
+        typeof evt.shotLocation.y !== 'number'
+      ) {
+        return
+      }
+
+      if (playerId && evt.shooterId !== playerId && evt.playerId !== playerId) return
+
+      shots.push({
+        id: evt.id,
+        x: getHalfCourtShotX(teamKey, evt.quarter, evt.shotLocation.x),
+        y: evt.shotLocation.y,
+        result: evt.result,
+        shotType: evt.shotType,
+        quarter: evt.quarter,
+        matchId: match.id,
+      })
+    })
+  })
+
+  return shots
+}
+
+function getHomePlayerProfiles(matches, rosterPlayers) {
+  const profiles = new Map()
+
+  ;(Array.isArray(rosterPlayers) ? rosterPlayers : []).forEach((player) => {
+    profiles.set(player.id, {
+      id: player.id,
+      name: player.name,
+      number: player.number,
+      ...getEmptyStatLine(),
+      games: 0,
+      shotMap: [],
+      matches: [],
+    })
+  })
+
+  matches.forEach((match) => {
+    if (!match?.home?.players || !Array.isArray(match.home.players)) return
+    const statsMap = getPlayerStatsFromEvents(match.home.players, Array.isArray(match.events) ? match.events : [])
+
+    match.home.players.forEach((player) => {
+      if (!profiles.has(player.id)) {
+        profiles.set(player.id, {
+          id: player.id,
+          name: player.name,
+          number: player.number,
+          ...getEmptyStatLine(),
+          games: 0,
+          shotMap: [],
+          matches: [],
+        })
+      }
+
+      const profile = profiles.get(player.id)
+      const line = statsMap[player.id] || getEmptyStatLine()
+      profile.games += 1
+      addStatLine(profile, line)
+      profile.matches.push({
+        id: match.id,
+        date: match.date || '',
+        venue: match.venue || '',
+        opponentName: match?.away?.name || 'Opponent',
+        result: `${match?.finalScore?.home || 0}-${match?.finalScore?.away || 0}`,
+        ...line,
+      })
+    })
+  })
+
+  const profilesList = [...profiles.values()].map((profile) => ({
+    ...profile,
+    avgPts: roundAverage(profile.pts, profile.games),
+    avgFgm: roundAverage(profile.fgm, profile.games),
+    avgFga: roundAverage(profile.fga, profile.games),
+    fgPct: pct(profile.fgm, profile.fga),
+    avgTpm: roundAverage(profile.tpm, profile.games),
+    avgTpa: roundAverage(profile.tpa, profile.games),
+    tpPct: pct(profile.tpm, profile.tpa),
+    avgFtm: roundAverage(profile.ftm, profile.games),
+    avgFta: roundAverage(profile.fta, profile.games),
+    ftPct: pct(profile.ftm, profile.fta),
+    avgReb: roundAverage(profile.reb, profile.games),
+    avgAst: roundAverage(profile.ast, profile.games),
+    avgStl: roundAverage(profile.stl, profile.games),
+    avgBlk: roundAverage(profile.blk, profile.games),
+    avgTov: roundAverage(profile.tov, profile.games),
+    avgFoul: roundAverage(profile.foul, profile.games),
+    shotMap: getSeasonShotMap(matches, 'home', profile.id),
+  }))
+
+  return profilesList.sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }))
 }
 
 function getQuarterScore(events, quarter) {
@@ -835,6 +1057,7 @@ function mapSupabaseMatchRow(row, events = []) {
 
   return {
     id: row.id,
+    homeTeamId: row.home_team_id || null,
     date: row.date || '',
     venue: row.venue || '',
     quarter: row.quarter || 4,
@@ -888,6 +1111,13 @@ export default function App() {
     players: [],
   })
   const [homeTeamId, setHomeTeamId] = useState(null)
+  const [homeTeams, setHomeTeams] = useState([])
+  const [homeTeamDraft, setHomeTeamDraft] = useState({
+    name: '',
+    coachName: '',
+    color: HOME_TEAM_COLOR,
+    secondaryColor: HOME_TEAM_SECONDARY_COLOR,
+  })
 
   const [playerFlashMap, setPlayerFlashMap] = useState({})
   const [savedMatches, setSavedMatches] = useState([])
@@ -927,6 +1157,19 @@ export default function App() {
   const [selectedPlayerId, setSelectedPlayerId] = useState('')
   const [panelView, setPanelView] = useState('log')
   const [shotMapPlayerFilter, setShotMapPlayerFilter] = useState(null)
+  const [shotMapTeamFilter, setShotMapTeamFilter] = useState(null)
+  const [homeAnalyticsOpen, setHomeAnalyticsOpen] = useState(false)
+  const [selectedHomeProfileId, setSelectedHomeProfileId] = useState('')
+  const [seasonHeatMapOpen, setSeasonHeatMapOpen] = useState(false)
+  const [seasonHeatMapPlayerId, setSeasonHeatMapPlayerId] = useState('')
+  const [discardedMatchIds, setDiscardedMatchIds] = useState(() => {
+    const saved = loadJSON(STORAGE_KEYS.discardedMatchIds, [])
+    return Array.isArray(saved) ? saved : []
+  })
+  const [injuredPlayerIds, setInjuredPlayerIds] = useState(() => {
+    const saved = loadJSON(STORAGE_KEYS.homeInjuredPlayers, [])
+    return Array.isArray(saved) ? saved : []
+  })
 
   const [subModal, setSubModal] = useState({
     open: false,
@@ -1020,22 +1263,50 @@ export default function App() {
   const [isRefreshingMenuData, setIsRefreshingMenuData] = useState(false)
   const [isExportingData, setIsExportingData] = useState(false)
 
-  async function loadHomeTeamFromSupabase() {
+  async function loadHomeTeamsFromSupabase(preferredTeamId = null) {
     const { data: teamRows, error: teamError } = await supabase
       .from('teams')
       .select('*')
-      .order('created_at', { ascending: false })
-      .limit(1)
+      .order('name', { ascending: true })
 
     if (teamError) {
-      console.error('Failed to load team from Supabase:', teamError)
+      console.error('Failed to load teams from Supabase:', teamError)
       return null
     }
 
-    const teamRow = teamRows?.[0]
+    const teams = teamRows || []
+    setHomeTeams(teams)
+
+    const storedTeamId = loadJSON(STORAGE_KEYS.selectedHomeTeamId, '')
+    const preferredTeam =
+      teams.find((team) => team.id === preferredTeamId) ||
+      teams.find((team) => team.id === storedTeamId) ||
+      teams.find((team) => team.name === 'Senior Team') ||
+      teams.find((team) => team.is_default) ||
+      teams[0]
+
+    if (!preferredTeam) {
+      console.error('No team found in Supabase.')
+      return null
+    }
+
+    await loadHomeTeamFromSupabase(preferredTeam.id, teams)
+    return preferredTeam
+  }
+
+  async function loadHomeTeamFromSupabase(teamIdOverride = null, preloadedTeams = null) {
+    const teams = preloadedTeams || homeTeams
+    const chosenTeamId =
+      teamIdOverride || loadJSON(STORAGE_KEYS.selectedHomeTeamId, '') || homeTeamId || null
+
+    const teamRow =
+      teams.find((team) => team.id === chosenTeamId) ||
+      teams.find((team) => team.name === 'Senior Team') ||
+      teams.find((team) => team.is_default) ||
+      teams[0]
 
     if (!teamRow) {
-      console.error('No team found in Supabase.')
+      console.error('No selected team found in Supabase.')
       return null
     }
 
@@ -1051,6 +1322,7 @@ export default function App() {
     }
 
     setHomeTeamId(teamRow.id)
+    saveJSON(STORAGE_KEYS.selectedHomeTeamId, teamRow.id)
     setHomeTeam({
       name: teamRow.name,
       coachName: teamRow.coach_name || loadJSON(STORAGE_KEYS.homeCoachName, DEFAULT_HOME_COACH_NAME),
@@ -1062,11 +1334,20 @@ export default function App() {
     return teamRow
   }
 
-  async function loadSavedMatchesFromSupabase() {
+  async function loadSavedMatchesFromSupabase(teamIdOverride = null) {
+    const selectedTeamId =
+      teamIdOverride || loadJSON(STORAGE_KEYS.selectedHomeTeamId, '') || homeTeamId || null
+
+    if (!selectedTeamId) {
+      setSavedMatches([])
+      return
+    }
+
     const { data: matchRows, error: matchesError } = await supabase
       .from('matches')
       .select('*')
       .eq('status', 'completed')
+      .eq('home_team_id', selectedTeamId)
       .order('updated_at', { ascending: false })
 
     if (matchesError) {
@@ -1105,11 +1386,20 @@ export default function App() {
     )
   }
 
-  async function loadLiveMatchesFromSupabase() {
+  async function loadLiveMatchesFromSupabase(teamIdOverride = null) {
+    const selectedTeamId =
+      teamIdOverride || loadJSON(STORAGE_KEYS.selectedHomeTeamId, '') || homeTeamId || null
+
+    if (!selectedTeamId) {
+      setLiveMatches([])
+      return
+    }
+
     const { data: liveMatchRows, error: liveMatchError } = await supabase
       .from('matches')
       .select('*')
       .eq('status', 'live')
+      .eq('home_team_id', selectedTeamId)
       .order('updated_at', { ascending: false })
 
     if (liveMatchError) {
@@ -1167,10 +1457,10 @@ export default function App() {
     setPullRefreshLabel('Refreshing...')
 
     try {
+      const teamRow = await loadHomeTeamsFromSupabase(homeTeamId)
       await Promise.all([
-        loadHomeTeamFromSupabase(),
-        loadLiveMatchesFromSupabase(),
-        loadSavedMatchesFromSupabase(),
+        loadLiveMatchesFromSupabase(teamRow?.id || homeTeamId),
+        loadSavedMatchesFromSupabase(teamRow?.id || homeTeamId),
       ])
     } finally {
       window.setTimeout(() => {
@@ -1284,15 +1574,15 @@ export default function App() {
 
   useEffect(() => {
     async function loadAppData() {
-      const teamRow = await loadHomeTeamFromSupabase()
+      const teamRow = await loadHomeTeamsFromSupabase()
 
       if (!teamRow) {
         setHasLoaded(true)
         return
       }
 
-      await loadLiveMatchesFromSupabase()
-      await loadSavedMatchesFromSupabase()
+      await loadLiveMatchesFromSupabase(teamRow.id)
+      await loadSavedMatchesFromSupabase(teamRow.id)
 
       setHasLoaded(true)
     }
@@ -2974,10 +3264,14 @@ export default function App() {
   }
 
   async function clearSavedMatches() {
-    const ok = window.confirm('Delete all saved matches?')
+    const ok = window.confirm(`Delete all saved matches for ${homeTeam.name}?`)
     if (!ok) return
 
-    const { error } = await supabase.from('matches').delete().eq('status', 'completed')
+    const { error } = await supabase
+      .from('matches')
+      .delete()
+      .eq('status', 'completed')
+      .eq('home_team_id', homeTeamId)
 
     if (error) {
       console.error('Failed to clear saved matches:', error)
@@ -2986,6 +3280,17 @@ export default function App() {
     }
 
     setSavedMatches([])
+  }
+
+  async function deleteSavedMatch(matchId, matchupLabel = 'this saved match') {
+    const ok = window.confirm(`Discard ${matchupLabel}? This will remove it from the archive.`)
+    if (!ok) return
+    setDiscardedMatchIds((prev) => (prev.includes(matchId) ? prev : [...prev, matchId]))
+
+    if (selectedSavedMatch?.id === matchId) {
+      setSelectedSavedMatch(null)
+      setScreen('matches')
+    }
   }
 
   function renderStarterPicker(teamName, players, selectedIds, teamKey) {
@@ -3303,10 +3608,36 @@ export default function App() {
   const coachBenchTeam = coachBenchModal.open && currentMatch ? currentMatch[coachBenchModal.teamKey] : null
   const coachBenchPlayers =
     coachBenchTeam?.players?.filter((player) => !coachBenchTeam.onCourt.includes(player.id)) || []
-  const recentSavedMatch = savedMatches[0] || null
-  const seasonSummary = useMemo(() => getSeasonSummary(savedMatches), [savedMatches])
+  const visibleSavedMatches = useMemo(
+    () => savedMatches.filter((match) => !discardedMatchIds.includes(match.id)),
+    [savedMatches, discardedMatchIds]
+  )
+  const recentSavedMatch = visibleSavedMatches[0] || null
+  const seasonSummary = useMemo(() => getSeasonSummary(visibleSavedMatches), [visibleSavedMatches])
+  const homePlayerProfiles = useMemo(
+    () => getHomePlayerProfiles(visibleSavedMatches, homeTeam.players),
+    [visibleSavedMatches, homeTeam.players]
+  )
+  const selectedHomeProfile =
+    homePlayerProfiles.find((player) => player.id === selectedHomeProfileId) ||
+    homePlayerProfiles[0] ||
+    null
+  const seasonHeatMapShots = useMemo(
+    () => getSeasonShotMap(visibleSavedMatches, 'home', seasonHeatMapPlayerId || null),
+    [visibleSavedMatches, seasonHeatMapPlayerId]
+  )
+  const seasonHeatMapCells = useMemo(() => buildHeatGrid(seasonHeatMapShots), [seasonHeatMapShots])
   const previewPlayers = homeTeam.players.slice(0, 5)
   const extraPlayersCount = Math.max(homeTeam.players.length - previewPlayers.length, 0)
+  const sortedHomePlayerProfiles = useMemo(() => {
+    const profiles = [...homePlayerProfiles]
+    return profiles.sort((a, b) => {
+      const aInjured = injuredPlayerIds.includes(a.id)
+      const bInjured = injuredPlayerIds.includes(b.id)
+      if (aInjured !== bInjured) return aInjured ? 1 : -1
+      return a.number.localeCompare(b.number, undefined, { numeric: true })
+    })
+  }, [homePlayerProfiles, injuredPlayerIds])
   const seasonLeaderCards = [
     { key: 'pts', label: 'Top Scorer', statLabel: 'PTS', leader: seasonSummary.leaders.pts, valueKey: 'pts' },
     { key: 'reb', label: 'Top Rebounder', statLabel: 'REB', leader: seasonSummary.leaders.reb, valueKey: 'reb' },
@@ -3342,9 +3673,38 @@ export default function App() {
     }
   }, [quarterSummaryOpen])
 
+  useEffect(() => {
+    saveJSON(STORAGE_KEYS.homeInjuredPlayers, injuredPlayerIds)
+  }, [injuredPlayerIds])
+
+  useEffect(() => {
+    saveJSON(STORAGE_KEYS.discardedMatchIds, discardedMatchIds)
+  }, [discardedMatchIds])
+
+  useEffect(() => {
+    if (!homePlayerProfiles.length) {
+      setSelectedHomeProfileId('')
+      return
+    }
+
+    if (!homePlayerProfiles.some((player) => player.id === selectedHomeProfileId)) {
+      setSelectedHomeProfileId(homePlayerProfiles[0].id)
+    }
+  }, [homePlayerProfiles, selectedHomeProfileId])
+
+  useEffect(() => {
+    setHomeTeamDraft({
+      name: homeTeam.name || '',
+      coachName: homeTeam.coachName || '',
+      color: homeTeam.color || HOME_TEAM_COLOR,
+      secondaryColor: homeTeam.secondaryColor || HOME_TEAM_SECONDARY_COLOR,
+    })
+  }, [homeTeamId, homeTeam.name, homeTeam.coachName, homeTeam.color, homeTeam.secondaryColor])
+
   function openPlayerHeatMap(teamKey, player) {
     if (!currentMatch || !player) return
     const teamName = teamKey === 'home' ? currentMatch.home.name : currentMatch.away.name
+    setShotMapTeamFilter(null)
     setShotMapPlayerFilter({
       teamKey,
       teamName,
@@ -3353,6 +3713,212 @@ export default function App() {
     })
     setPanelView('shots')
     setBottomPanelOpen(true)
+  }
+
+  function toggleInjuredPlayer(playerId) {
+    setInjuredPlayerIds((prev) =>
+      prev.includes(playerId) ? prev.filter((id) => id !== playerId) : [...prev, playerId]
+    )
+  }
+
+  async function switchHomeTeam(nextTeamId) {
+    if (!nextTeamId || nextTeamId === homeTeamId) return
+
+    const teamRow = await loadHomeTeamFromSupabase(nextTeamId, homeTeams)
+    await Promise.all([
+      loadLiveMatchesFromSupabase(teamRow?.id || nextTeamId),
+      loadSavedMatchesFromSupabase(teamRow?.id || nextTeamId),
+    ])
+
+    setCurrentMatch(null)
+    setCurrentMatchId(null)
+    setSelectedSavedMatch(null)
+    setSelectedPlayerId('')
+    setSelectedTeam('home')
+    setScreen('home')
+  }
+
+  async function addHomeTeam(nameOverride = '') {
+    const nextName = nameOverride.trim()
+    if (!nextName) return
+
+    const { data, error } = await supabase
+      .from('teams')
+      .insert({
+        name: nextName,
+        coach_name: '',
+        primary_color: HOME_TEAM_COLOR,
+        secondary_color: HOME_TEAM_SECONDARY_COLOR,
+      })
+      .select('*')
+      .single()
+
+    if (error) {
+      console.error('Failed to add home team:', error)
+      alert('Failed to add team.')
+      return
+    }
+
+    const nextTeams = [...homeTeams, data].sort((a, b) => a.name.localeCompare(b.name))
+    setHomeTeams(nextTeams)
+    await switchHomeTeam(data.id)
+  }
+
+  async function promptAddHomeTeam() {
+    const nextName = window.prompt('Enter the new home team name')
+    if (!nextName) return
+    await addHomeTeam(nextName)
+  }
+
+  async function removeCurrentHomeTeam() {
+    if (!homeTeamId) return
+    if (homeTeams.length <= 1) {
+      alert('You need to keep at least one home team.')
+      return
+    }
+
+    const ok = window.confirm(`Remove ${homeTeam.name}? This will remove its roster from the team switcher.`)
+    if (!ok) return
+
+    const { error: playersError } = await supabase.from('players').delete().eq('team_id', homeTeamId)
+    if (playersError) {
+      console.error('Failed to remove team players:', playersError)
+      alert('Failed to remove team players.')
+      return
+    }
+
+    const { error: teamError } = await supabase.from('teams').delete().eq('id', homeTeamId)
+    if (teamError) {
+      console.error('Failed to remove team:', teamError)
+      alert('Failed to remove team.')
+      return
+    }
+
+    const remainingTeams = homeTeams.filter((team) => team.id !== homeTeamId)
+    setHomeTeams(remainingTeams)
+    const fallbackTeam =
+      remainingTeams.find((team) => team.name === 'Senior Team') ||
+      remainingTeams[0]
+
+    if (fallbackTeam) {
+      await switchHomeTeam(fallbackTeam.id)
+    }
+  }
+
+  async function saveHomeTeamSettings() {
+    if (!homeTeamId) return
+
+    const payload = {
+      name: homeTeamDraft.name.trim() || homeTeam.name,
+      coach_name: homeTeamDraft.coachName.trim(),
+      primary_color: homeTeamDraft.color,
+      secondary_color: homeTeamDraft.secondaryColor,
+    }
+
+    const { error } = await supabase
+      .from('teams')
+      .update(payload)
+      .eq('id', homeTeamId)
+
+    if (error) {
+      console.error('Failed to save home team settings:', error)
+      alert('Failed to save team changes.')
+      return
+    }
+
+    saveJSON(STORAGE_KEYS.homeCoachName, payload.coach_name)
+
+    setHomeTeam((prev) => ({
+      ...prev,
+      name: payload.name,
+      coachName: payload.coach_name,
+      color: payload.primary_color,
+      secondaryColor: payload.secondary_color,
+    }))
+
+    setHomeTeams((prev) =>
+      prev.map((team) =>
+        team.id === homeTeamId
+          ? {
+              ...team,
+              name: payload.name,
+              coach_name: payload.coach_name,
+              primary_color: payload.primary_color,
+              secondary_color: payload.secondary_color,
+            }
+          : team
+      )
+    )
+  }
+
+  function renderSeasonHeatMapCard(title, shots, heatCells) {
+    return (
+      <div className="analytics-heatmap-card">
+        <div className="analytics-heatmap-head">
+          <div>
+            <div className="section-title">Heat Map</div>
+            <div className="analytics-heatmap-title">{title}</div>
+          </div>
+          <div className="match-detail-inline-stats">
+            <span>{shots.length} charted shots</span>
+          </div>
+        </div>
+
+        <div className="shot-map-wrap">
+          <div className="shot-map-court folded-half-court">
+            <svg
+              className="shot-map-lines-svg"
+              viewBox="140 0 140 150"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <g stroke="rgba(255,255,255,0.25)" strokeWidth="1.4" fill="none" strokeLinecap="round">
+                <line x1="280" y1="9" x2="250.1" y2="9" />
+                <line x1="280" y1="141" x2="250.1" y2="141" />
+                <path d="M 250.1 9 A 67.5 67.5 0 0 0 250.1 141" />
+                <line x1="280" y1="50.5" x2="222" y2="50.5" />
+                <line x1="280" y1="99.5" x2="222" y2="99.5" />
+                <line x1="222" y1="50.5" x2="222" y2="99.5" />
+                <path d="M 222 57 A 18 18 0 0 0 222 93" />
+                <path d="M 222 57 A 18 18 0 0 1 222 93" strokeDasharray="5 3" />
+                <path d="M 264.25 62.5 A 12.5 12.5 0 0 0 264.25 87.5" />
+              </g>
+            </svg>
+
+            {heatCells.map((cell) => (
+              <div
+                key={`season-heat-${cell.column}-${cell.row}`}
+                className="shot-heat-cell"
+                style={{
+                  left: `${cell.x}%`,
+                  top: `${cell.y}%`,
+                  width: `${cell.width}%`,
+                  height: `${cell.height}%`,
+                  ...getHeatCellStyle(cell),
+                }}
+              />
+            ))}
+
+            {!shots.length && (
+              <div className="shot-map-empty-state">
+                <strong>No tracked shots yet</strong>
+                <span>Chart some matches to unlock the club heat map.</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {!!shots.length && (
+          <div className="shot-map-legend">
+            <span><i className="legend-dot miss" /> Miss-heavy areas</span>
+            <span><i className="legend-dot mixed" /> Mixed results</span>
+            <span><i className="legend-dot make" /> Make-heavy areas</span>
+            <span><i className="legend-dot fold" /> Attacking half view</span>
+          </div>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -3365,14 +3931,40 @@ export default function App() {
 
       {screen === 'home' && (
         <div className="page home-page" {...pageGestureProps}>
+          <div className="card home-team-switcher-bar">
+            <div>
+              <div className="section-title">Active Home Team</div>
+              <div className="team-switcher-title">{homeTeam.name}</div>
+            </div>
+            <div className="team-switcher-controls">
+              <select
+                className="text-input team-switcher-select"
+                value={homeTeamId || ''}
+                onChange={(e) => switchHomeTeam(e.target.value)}
+              >
+                {homeTeams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+              </select>
+              <button className="mini-panel-btn team-switcher-add-btn" onClick={promptAddHomeTeam} aria-label="Add home team">
+                +
+              </button>
+            </div>
+          </div>
+
           <div className="home-top-grid">
             <div className="hero-card">
             <div className="hero-icon">🏀</div>
-            <h1>Basketball Ops for the Titans.</h1>
+            <h1>Basketball made easy for Titans.</h1>
             <p>Track your roster, run live games courtside, and keep every result looking professional.</p>
             </div>
 
-            <div className="info-card home-roster-card">
+            <button
+              className="info-card home-roster-card home-roster-card-btn"
+              onClick={() => setScreen('homeAnalytics')}
+            >
               <div className="info-title">Current Home Team</div>
               <div className="info-main">{homeTeam.name}</div>
               <div className="info-sub">
@@ -3381,7 +3973,10 @@ export default function App() {
 
               <div className="home-roster-preview">
                 {previewPlayers.map((player) => (
-                  <div key={player.id} className="home-player-pill">
+                  <div
+                    key={player.id}
+                    className={`home-player-pill ${injuredPlayerIds.includes(player.id) ? 'injured' : ''}`}
+                  >
                     <span>#{player.number}</span>
                     <strong>{getDisplayName(player)}</strong>
                   </div>
@@ -3393,10 +3988,10 @@ export default function App() {
                   </div>
                 )}
               </div>
-            </div>
+            </button>
           </div>
 
-          {currentMatch && liveMatches.length === 0 && (
+          {currentMatch && currentMatch.homeTeamId === homeTeamId && liveMatches.length === 0 && (
             <div className="card resume-card">
               <div>
                 <div className="section-title">Unfinished Match Found</div>
@@ -3523,6 +4118,18 @@ export default function App() {
               </div>
             </div>
 
+            <div className="season-summary-actions">
+              <button
+                className="mini-panel-btn export-btn export-btn-secondary"
+                onClick={() => {
+                  setSeasonHeatMapPlayerId('')
+                  setScreen('homeAnalytics')
+                }}
+              >
+                View Home Team Heat Map
+              </button>
+            </div>
+
             <div className="season-leaders-grid">
               {seasonLeaderCards.map((item) => (
                 <div key={item.key} className="season-leader-card">
@@ -3562,53 +4169,26 @@ export default function App() {
             <label className="field-label">Team Name</label>
             <input
               className="text-input"
-              value={homeTeam.name}
-              onChange={async (e) => {
-                const nextName = e.target.value
-
-                setHomeTeam((prev) => ({
+              value={homeTeamDraft.name}
+              onChange={(e) =>
+                setHomeTeamDraft((prev) => ({
                   ...prev,
-                  name: nextName,
+                  name: e.target.value,
                 }))
-
-                if (!homeTeamId) return
-
-                const { error } = await supabase
-                  .from('teams')
-                  .update({ name: nextName })
-                  .eq('id', homeTeamId)
-
-                if (error) {
-                  console.error('Failed to update team name:', error)
-                }
-              }}
+              }
               placeholder="Enter home team name"
             />
 
             <label className="field-label">Coach Name</label>
             <input
               className="text-input"
-              value={homeTeam.coachName}
-              onChange={async (e) => {
-                const nextCoachName = e.target.value
-
-                setHomeTeam((prev) => ({
+              value={homeTeamDraft.coachName}
+              onChange={(e) =>
+                setHomeTeamDraft((prev) => ({
                   ...prev,
-                  coachName: nextCoachName,
+                  coachName: e.target.value,
                 }))
-                saveJSON(STORAGE_KEYS.homeCoachName, nextCoachName)
-
-                if (!homeTeamId) return
-
-                const { error } = await supabase
-                  .from('teams')
-                  .update({ coach_name: nextCoachName })
-                  .eq('id', homeTeamId)
-
-                if (error) {
-                  console.warn('Coach name column not available in Supabase yet:', error)
-                }
-              }}
+              }
               placeholder="Enter home coach name"
             />
 
@@ -3618,26 +4198,13 @@ export default function App() {
                 <input
                   className="team-color-input"
                   type="color"
-                  value={homeTeam.color}
-                  onChange={async (e) => {
-                    const nextColor = e.target.value
-
-                    setHomeTeam((prev) => ({
+                  value={homeTeamDraft.color}
+                  onChange={(e) =>
+                    setHomeTeamDraft((prev) => ({
                       ...prev,
-                      color: nextColor,
+                      color: e.target.value,
                     }))
-
-                    if (!homeTeamId) return
-
-                    const { error } = await supabase
-                      .from('teams')
-                      .update({ primary_color: nextColor })
-                      .eq('id', homeTeamId)
-
-                    if (error) {
-                      console.error('Failed to update home primary colour:', error)
-                    }
-                  }}
+                  }
                 />
               </div>
 
@@ -3646,28 +4213,24 @@ export default function App() {
                 <input
                   className="team-color-input"
                   type="color"
-                  value={homeTeam.secondaryColor}
-                  onChange={async (e) => {
-                    const nextColor = e.target.value
-
-                    setHomeTeam((prev) => ({
+                  value={homeTeamDraft.secondaryColor}
+                  onChange={(e) =>
+                    setHomeTeamDraft((prev) => ({
                       ...prev,
-                      secondaryColor: nextColor,
+                      secondaryColor: e.target.value,
                     }))
-
-                    if (!homeTeamId) return
-
-                    const { error } = await supabase
-                      .from('teams')
-                      .update({ secondary_color: nextColor })
-                      .eq('id', homeTeamId)
-
-                    if (error) {
-                      console.error('Failed to update home secondary colour:', error)
-                    }
-                  }}
+                  }
                 />
               </div>
+            </div>
+
+            <div className="team-settings-actions">
+              <button className="primary-btn" onClick={saveHomeTeamSettings}>
+                Save Changes
+              </button>
+              <button className="danger-outline-btn" onClick={removeCurrentHomeTeam}>
+                Remove Current Team
+              </button>
             </div>
           </div>
 
@@ -3916,7 +4479,10 @@ export default function App() {
             bottomPanelOpen={bottomPanelOpen}
             setPanelView={setPanelView}
             setBottomPanelOpen={setBottomPanelOpen}
-            clearShotMapPlayerFilter={() => setShotMapPlayerFilter(null)}
+            clearShotMapPlayerFilter={() => {
+              setShotMapPlayerFilter(null)
+              setShotMapTeamFilter(null)
+            }}
             setQuarterSummaryOpen={setQuarterSummaryOpen}
             openFixAssistModal={openFixAssistModal}
             fixAssistDisabled={fixableScoringEvents.length === 0}
@@ -3964,6 +4530,8 @@ export default function App() {
             setBottomPanelOpen={setBottomPanelOpen}
             panelView={panelView}
             shotMapPlayerFilter={shotMapPlayerFilter}
+            shotMapTeamFilter={shotMapTeamFilter}
+            setShotMapTeamFilter={setShotMapTeamFilter}
             groupedLog={groupedLog}
             currentMatch={currentMatch}
             undoEvent={undoEvent}
@@ -4043,6 +4611,12 @@ export default function App() {
       {screen === 'matchDetail' && selectedSavedMatch && (
         <MatchDetailView
           match={selectedSavedMatch}
+          onDeleteMatch={() =>
+            deleteSavedMatch(
+              selectedSavedMatch.id,
+              `${selectedSavedMatch.home.name} vs ${selectedSavedMatch.away.name}`
+            )
+          }
           onBack={() => {
             setSelectedSavedMatch(null)
             setScreen('matches')
@@ -4059,7 +4633,7 @@ export default function App() {
             <h2>Previous Matches</h2>
           </div>
 
-          {savedMatches.length === 0 ? (
+          {visibleSavedMatches.length === 0 ? (
             <div className="card empty-state matches-empty-state">
               <div className="section-title">No Archive Yet</div>
               <div className="info-main">Your saved games will live here.</div>
@@ -4082,7 +4656,7 @@ export default function App() {
                 <div className="matches-hero-stats">
                   <div className="matches-stat">
                     <span>Saved games</span>
-                    <strong>{savedMatches.length}</strong>
+                    <strong>{visibleSavedMatches.length}</strong>
                   </div>
                   <div className="matches-stat">
                     <span>Home team</span>
@@ -4092,15 +4666,15 @@ export default function App() {
               </div>
 
               <div className="matches-list">
-                {savedMatches.map((match) => (
-                  <button
-                    className="match-history-card match-history-btn"
-                    key={match.id}
-                    onClick={() => {
-                      setSelectedSavedMatch(match)
-                      setScreen('matchDetail')
-                    }}
-                  >
+                {visibleSavedMatches.map((match) => (
+                  <div className="match-history-card match-history-card-shell" key={match.id}>
+                    <button
+                      className="match-history-btn"
+                      onClick={() => {
+                        setSelectedSavedMatch(match)
+                        setScreen('matchDetail')
+                      }}
+                    >
                     <div className="match-history-meta">
                       <span>{match.date || 'No date'}</span>
                       <span>{match.venue || 'No venue'}</span>
@@ -4122,7 +4696,14 @@ export default function App() {
                         <div className="history-score-label">Final</div>
                       </div>
                     </div>
-                  </button>
+                    </button>
+                    <button
+                      className="danger-outline-btn archive-discard-btn"
+                      onClick={() => deleteSavedMatch(match.id, `${match.home.name} vs ${match.away.name}`)}
+                    >
+                      Discard
+                    </button>
+                  </div>
                 ))}
               </div>
 
@@ -4131,6 +4712,146 @@ export default function App() {
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {screen === 'homeAnalytics' && (
+        <div className="page analytics-page" {...pageGestureProps}>
+          <div className="topbar">
+            <button className="back-btn" onClick={() => setScreen('home')}>
+              â† Back
+            </button>
+            <h2>{homeTeam.name} Player Profiles</h2>
+          </div>
+
+            <div className="analytics-layout analytics-layout-page">
+              <div className="analytics-player-list">
+                {sortedHomePlayerProfiles.map((player) => (
+                  <button
+                    key={player.id}
+                  className={`analytics-player-row ${selectedHomeProfile?.id === player.id ? 'active' : ''} ${injuredPlayerIds.includes(player.id) ? 'injured' : ''}`}
+                  onClick={() => setSelectedHomeProfileId(player.id)}
+                >
+                  <div>
+                    <strong>
+                      #{player.number} {getDisplayName(player)}
+                    </strong>
+                    <span>{player.games} games</span>
+                  </div>
+                  {injuredPlayerIds.includes(player.id) && <em>Injured</em>}
+                </button>
+              ))}
+            </div>
+
+              <div className="analytics-main">
+              {selectedHomeProfile ? (
+                <>
+                  <div className="analytics-top-row">
+                  <div className="card analytics-heatmap-card analytics-stats-card">
+                    <div className="analytics-profile-head">
+                      <div>
+                        <div className="section-title">Player Snapshot</div>
+                        <div className="analytics-profile-name">
+                          {selectedHomeProfile.name} <span>#{selectedHomeProfile.number}</span>
+                        </div>
+                      </div>
+                      <button
+                        className={`danger-outline-btn injury-toggle-btn ${injuredPlayerIds.includes(selectedHomeProfile.id) ? 'active' : ''}`}
+                        onClick={() => toggleInjuredPlayer(selectedHomeProfile.id)}
+                      >
+                        {injuredPlayerIds.includes(selectedHomeProfile.id) ? 'Mark Healthy' : 'Mark Injured'}
+                      </button>
+                    </div>
+
+                    <div className="analytics-averages-grid">
+                      <div className="season-total-card"><span>PTS / Game</span><strong>{selectedHomeProfile.avgPts}</strong></div>
+                      <div className="season-total-card"><span>FG / Game</span><strong>{selectedHomeProfile.avgFgm}/{selectedHomeProfile.avgFga}</strong></div>
+                      <div className="season-total-card"><span>FG%</span><strong>{selectedHomeProfile.fgPct}</strong></div>
+                      <div className="season-total-card"><span>3PT / Game</span><strong>{selectedHomeProfile.avgTpm}/{selectedHomeProfile.avgTpa}</strong></div>
+                      <div className="season-total-card"><span>3P%</span><strong>{selectedHomeProfile.tpPct}</strong></div>
+                      <div className="season-total-card"><span>FT / Game</span><strong>{selectedHomeProfile.avgFtm}/{selectedHomeProfile.avgFta}</strong></div>
+                      <div className="season-total-card"><span>FT%</span><strong>{selectedHomeProfile.ftPct}</strong></div>
+                      <div className="season-total-card"><span>REB / Game</span><strong>{selectedHomeProfile.avgReb}</strong></div>
+                      <div className="season-total-card"><span>AST / Game</span><strong>{selectedHomeProfile.avgAst}</strong></div>
+                      <div className="season-total-card"><span>STL / Game</span><strong>{selectedHomeProfile.avgStl}</strong></div>
+                      <div className="season-total-card"><span>BLK / Game</span><strong>{selectedHomeProfile.avgBlk}</strong></div>
+                      <div className="season-total-card"><span>TOV / Game</span><strong>{selectedHomeProfile.avgTov}</strong></div>
+                      <div className="season-total-card"><span>PF / Game</span><strong>{selectedHomeProfile.avgFoul}</strong></div>
+                    </div>
+                  </div>
+                  <div className="card analytics-heatmap-card analytics-player-heatmap-card">
+                    {renderSeasonHeatMapCard(
+                      `${homeTeam.name} - ${getDisplayName(selectedHomeProfile)}`,
+                      selectedHomeProfile.shotMap,
+                      buildHeatGrid(selectedHomeProfile.shotMap)
+                    )}
+                  </div>
+                  </div>
+
+                  <div className="card analytics-history-card">
+                    <div className="match-detail-section-head">
+                      <div>
+                        <div className="section-title">Match History</div>
+                        <div className="match-detail-team-heading">{getDisplayName(selectedHomeProfile)}</div>
+                      </div>
+                    </div>
+                    <div className="analytics-history-list">
+                      <div className="analytics-history-table">
+                        <div className="analytics-history-table-head">
+                          <div className="analytics-history-head">Match</div>
+                          <div className="analytics-history-head">Score</div>
+                          <div className="analytics-history-head">PTS</div>
+                          <div className="analytics-history-head">FG</div>
+                          <div className="analytics-history-head">FG%</div>
+                          <div className="analytics-history-head">3PT</div>
+                          <div className="analytics-history-head">3P%</div>
+                          <div className="analytics-history-head">FT</div>
+                          <div className="analytics-history-head">FT%</div>
+                          <div className="analytics-history-head">REB</div>
+                          <div className="analytics-history-head">AST</div>
+                          <div className="analytics-history-head">STL</div>
+                          <div className="analytics-history-head">BLK</div>
+                          <div className="analytics-history-head">TOV</div>
+                          <div className="analytics-history-head">PF</div>
+                        </div>
+
+                        {selectedHomeProfile.matches.map((item) => (
+                          <button
+                            key={`${selectedHomeProfile.id}-${item.id}`}
+                            className="analytics-history-table-row"
+                            onClick={() => {
+                              const match = visibleSavedMatches.find((savedMatch) => savedMatch.id === item.id)
+                              if (!match) return
+                              setSelectedSavedMatch(match)
+                              setScreen('matchDetail')
+                            }}
+                          >
+                            <div><strong>{item.date || 'No date'}</strong><span>vs {item.opponentName}</span></div>
+                            <div>{item.result}</div>
+                            <div>{item.pts}</div>
+                            <div>{item.fgm}/{item.fga}</div>
+                            <div>{pct(item.fgm, item.fga)}</div>
+                            <div>{item.tpm}/{item.tpa}</div>
+                            <div>{pct(item.tpm, item.tpa)}</div>
+                            <div>{item.ftm}/{item.fta}</div>
+                            <div>{pct(item.ftm, item.fta)}</div>
+                            <div>{item.reb}</div>
+                            <div>{item.ast}</div>
+                            <div>{item.stl}</div>
+                            <div>{item.blk}</div>
+                            <div>{item.tov}</div>
+                            <div>{item.foul}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="log-empty">No home player profiles yet.</div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

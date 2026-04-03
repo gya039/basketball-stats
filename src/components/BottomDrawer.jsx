@@ -1,5 +1,5 @@
 function getAttackingSide(teamKey, quarter) {
-  const homeSide = quarter >= 3 ? 'left' : 'right'
+  const homeSide = quarter >= 3 ? 'right' : 'left'
   if (teamKey === 'home') return homeSide
   return homeSide === 'left' ? 'right' : 'left'
 }
@@ -120,17 +120,41 @@ function buildHeatGrid(shots, columns = 24, rows = 14) {
   }))
 }
 
-function renderShotMap(teamName, shots) {
+function renderShotMap(teamName, shots, onOpen = null) {
   const heatCells = buildHeatGrid(shots)
   const hasShots = shots.length > 0
 
   return (
     <div className="boxscore-team shot-map-panel">
-      <h3 className="shot-map-title">{teamName}</h3>
+      {onOpen ? (
+        <button className="shot-map-title-btn" onClick={onOpen}>
+          <h3 className="shot-map-title">{teamName}</h3>
+        </button>
+      ) : (
+        <h3 className="shot-map-title">{teamName}</h3>
+      )}
       <div className="shot-map-wrap">
         <div className="shot-map-court folded-half-court">
-          <div className="shot-map-half right" />
-          <div className="shot-map-center-circle" />
+          <svg
+            className="shot-map-lines-svg"
+            viewBox="140 0 140 150"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <g stroke="rgba(255,255,255,0.25)" strokeWidth="1.4" fill="none" strokeLinecap="round">
+              <line x1="280" y1="9" x2="250.1" y2="9" />
+              <line x1="280" y1="141" x2="250.1" y2="141" />
+              <path d="M 250.1 9 A 67.5 67.5 0 0 0 250.1 141" />
+
+              <line x1="280" y1="50.5" x2="222" y2="50.5" />
+              <line x1="280" y1="99.5" x2="222" y2="99.5" />
+              <line x1="222" y1="50.5" x2="222" y2="99.5" />
+              <path d="M 222 57 A 18 18 0 0 0 222 93" />
+              <path d="M 222 57 A 18 18 0 0 1 222 93" strokeDasharray="5 3" />
+              <path d="M 264.25 62.5 A 12.5 12.5 0 0 0 264.25 87.5" />
+            </g>
+          </svg>
 
           {heatCells.map((cell) => (
             <div
@@ -173,6 +197,8 @@ export default function BottomDrawer({
   setBottomPanelOpen,
   panelView,
   shotMapPlayerFilter,
+  shotMapTeamFilter,
+  setShotMapTeamFilter,
   groupedLog,
   currentMatch,
   undoEvent,
@@ -202,13 +228,19 @@ export default function BottomDrawer({
         ? 'Box Score'
         : shotMapPlayerFilter
           ? `${shotMapPlayerFilter.playerName} Heat Map`
+          : shotMapTeamFilter
+            ? `${shotMapTeamFilter.teamName} Heat Map`
           : 'Shot Map'
 
   return (
     <div className="bottom-drawer-overlay" onClick={() => setBottomPanelOpen(false)}>
       <div
         className={`bottom-panel-court drawer-panel open ${panelView === 'shots' ? 'shot-map-drawer' : ''} ${
-          panelView === 'shots' && shotMapPlayerFilter ? 'player-heatmap-drawer' : ''
+          panelView === 'shots' && shotMapPlayerFilter
+            ? 'player-heatmap-drawer'
+            : panelView === 'shots' && shotMapTeamFilter
+              ? 'team-heatmap-drawer'
+              : ''
         }`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -351,16 +383,31 @@ export default function BottomDrawer({
         )}
 
         {panelView === 'shots' && (
-          <div className={`boxscore-panel ${shotMapPlayerFilter ? '' : 'shot-map-pair-grid'}`}>
+          <div className={`boxscore-panel ${shotMapPlayerFilter || shotMapTeamFilter ? '' : 'shot-map-pair-grid'}`}>
             {shotMapPlayerFilter ? (
               renderShotMap(
                 `${shotMapPlayerFilter.teamName} - ${shotMapPlayerFilter.playerName}`,
                 shotMapPlayerFilter.teamKey === 'home' ? homeShotMap : awayShotMap
               )
+            ) : shotMapTeamFilter ? (
+              renderShotMap(
+                shotMapTeamFilter.teamName,
+                shotMapTeamFilter.teamKey === 'home' ? homeShotMap : awayShotMap
+              )
             ) : (
               <>
-                {renderShotMap(currentMatch.home.name, homeShotMap)}
-                {renderShotMap(currentMatch.away.name, awayShotMap)}
+                {renderShotMap(currentMatch.home.name, homeShotMap, () => {
+                  setShotMapTeamFilter({
+                    teamKey: 'home',
+                    teamName: currentMatch.home.name,
+                  })
+                })}
+                {renderShotMap(currentMatch.away.name, awayShotMap, () => {
+                  setShotMapTeamFilter({
+                    teamKey: 'away',
+                    teamName: currentMatch.away.name,
+                  })
+                })}
               </>
             )}
           </div>
