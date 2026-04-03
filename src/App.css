@@ -3795,9 +3795,9 @@ button {
 }
 
 .bottom-panel-court.shot-map-drawer {
-  width: min(92vw, 1240px);
-  max-height: min(84svh, 880px);
-  padding: 14px 16px;
+  width: min(90vw, 1080px);
+  max-height: min(80svh, 760px);
+  padding: 10px 14px 12px;
   border-radius: 22px;
   border-color: rgba(147, 197, 253, 0.12);
   box-shadow:
@@ -3806,21 +3806,33 @@ button {
 }
 
 .bottom-panel-court.shot-map-drawer .drawer-header {
-  margin-bottom: 8px;
-  padding-bottom: 8px;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+}
+
+.bottom-panel-court.shot-map-drawer .drawer-header.drawer-header-shots {
+  justify-content: flex-end;
+  min-height: 0;
+  padding-bottom: 0;
+  margin-bottom: 4px;
+  border-bottom: none;
+}
+
+.bottom-panel-court.shot-map-drawer .drawer-header.drawer-header-shots .drawer-title {
+  display: none;
 }
 
 .bottom-panel-court.shot-map-drawer.player-heatmap-drawer,
 .bottom-panel-court.shot-map-drawer.team-heatmap-drawer {
-  width: min(92vw, 920px);
-  max-height: min(82svh, 760px);
-  padding: 12px 14px;
-  overflow: auto;
+  width: min(96vw, 860px);
+  max-height: min(78svh, 620px);
+  padding: 6px 8px 8px;
+  overflow: hidden;
 }
 
 .shot-map-pair-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
+  gap: 14px;
   align-items: start;
 }
 
@@ -3850,23 +3862,49 @@ button {
 
 .player-heatmap-drawer .shot-map-panel,
 .team-heatmap-drawer .shot-map-panel {
-  max-width: min(100%, 560px);
+  max-width: min(100%, 500px);
 }
 
 .player-heatmap-drawer .shot-map-legend,
 .team-heatmap-drawer .shot-map-legend {
-  margin-top: 10px;
-  font-size: 11px;
-  gap: 10px;
+  display: none;
+}
+
+.player-heatmap-drawer .drawer-header.drawer-header-shots,
+.team-heatmap-drawer .drawer-header.drawer-header-shots {
+  margin-bottom: 2px;
+}
+
+.player-heatmap-drawer .drawer-toggle-btn,
+.team-heatmap-drawer .drawer-toggle-btn {
+  min-height: 38px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.player-heatmap-drawer .shot-map-title,
+.team-heatmap-drawer .shot-map-title {
+  margin: 0 0 2px;
+  font-size: 14px;
+}
+
+.player-heatmap-drawer .shot-map-wrap,
+.team-heatmap-drawer .shot-map-wrap {
+  padding-top: 0;
+}
+
+.player-heatmap-drawer .shot-map-court.folded-half-court,
+.team-heatmap-drawer .shot-map-court.folded-half-court {
+  max-height: calc(min(78svh, 620px) - 70px);
 }
 
 .shot-map-legend {
   display: flex;
-  gap: 16px;
+  gap: 10px;
   flex-wrap: wrap;
-  margin-top: 14px;
+  margin-top: 10px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -3878,6 +3916,21 @@ button {
 
 .shot-map-download-btn {
   min-height: 42px;
+}
+
+.match-detail-box-grid .shot-map-panel {
+  max-width: min(100%, 360px);
+  margin-inline: auto;
+}
+
+.match-detail-box-grid .shot-map-court.folded-half-court {
+  aspect-ratio: 1.02 / 1;
+}
+
+.match-detail-box-grid .shot-map-legend {
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 11px;
 }
 
 .legend-dot {
@@ -4565,8 +4618,24 @@ button {
 
   .bottom-panel-court.shot-map-drawer.player-heatmap-drawer,
   .bottom-panel-court.shot-map-drawer.team-heatmap-drawer {
-    width: min(92vw, 960px);
-    max-height: min(84svh, 700px);
+    width: min(97vw, 760px);
+    max-height: min(72svh, 520px);
+    padding: 4px 6px 6px;
+  }
+
+  .player-heatmap-drawer .shot-map-panel,
+  .team-heatmap-drawer .shot-map-panel {
+    max-width: min(100%, 420px);
+  }
+
+  .player-heatmap-drawer .shot-map-legend,
+  .team-heatmap-drawer .shot-map-legend {
+    display: none;
+  }
+
+  .player-heatmap-drawer .shot-map-court.folded-half-court,
+  .team-heatmap-drawer .shot-map-court.folded-half-court {
+    max-height: calc(min(72svh, 520px) - 54px);
   }
 }
 

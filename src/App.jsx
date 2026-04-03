@@ -3267,6 +3267,20 @@ export default function App() {
     const ok = window.confirm(`Delete all saved matches for ${homeTeam.name}?`)
     if (!ok) return
 
+    const matchIds = savedMatches
+      .filter((match) => match.homeTeamId === homeTeamId)
+      .map((match) => match.id)
+
+    if (matchIds.length > 0) {
+      const { error: eventsError } = await supabase.from('match_events').delete().in('match_id', matchIds)
+
+      if (eventsError) {
+        console.error('Failed to clear saved match events:', eventsError)
+        alert('Failed to clear saved matches.')
+        return
+      }
+    }
+
     const { error } = await supabase
       .from('matches')
       .delete()
@@ -3283,9 +3297,26 @@ export default function App() {
   }
 
   async function deleteSavedMatch(matchId, matchupLabel = 'this saved match') {
-    const ok = window.confirm(`Discard ${matchupLabel}? This will remove it from the archive.`)
+    const ok = window.confirm(`Discard ${matchupLabel}? This will remove it across all devices.`)
     if (!ok) return
-    setDiscardedMatchIds((prev) => (prev.includes(matchId) ? prev : [...prev, matchId]))
+
+    const { error: eventsError } = await supabase.from('match_events').delete().eq('match_id', matchId)
+
+    if (eventsError) {
+      console.error('Failed to delete saved match events:', eventsError)
+      alert('Failed to discard saved match.')
+      return
+    }
+
+    const { error: matchError } = await supabase.from('matches').delete().eq('id', matchId)
+
+    if (matchError) {
+      console.error('Failed to delete saved match:', matchError)
+      alert('Failed to discard saved match.')
+      return
+    }
+
+    setSavedMatches((prev) => prev.filter((match) => match.id !== matchId))
 
     if (selectedSavedMatch?.id === matchId) {
       setSelectedSavedMatch(null)
@@ -3609,8 +3640,12 @@ export default function App() {
   const coachBenchPlayers =
     coachBenchTeam?.players?.filter((player) => !coachBenchTeam.onCourt.includes(player.id)) || []
   const visibleSavedMatches = useMemo(
-    () => savedMatches.filter((match) => !discardedMatchIds.includes(match.id)),
-    [savedMatches, discardedMatchIds]
+    () => savedMatches.filter((match) => match.homeTeamId === homeTeamId),
+    [savedMatches, homeTeamId]
+  )
+  const visibleLiveMatches = useMemo(
+    () => liveMatches.filter((match) => match.home_team_id === homeTeamId),
+    [liveMatches, homeTeamId]
   )
   const recentSavedMatch = visibleSavedMatches[0] || null
   const seasonSummary = useMemo(() => getSeasonSummary(visibleSavedMatches), [visibleSavedMatches])
@@ -3992,7 +4027,7 @@ export default function App() {
             </button>
           </div>
 
-          {currentMatch && currentMatch.homeTeamId === homeTeamId && liveMatches.length === 0 && (
+          {currentMatch && currentMatch.homeTeamId === homeTeamId && visibleLiveMatches.length === 0 && (
             <div className="card resume-card">
               <div>
                 <div className="section-title">Unfinished Match Found</div>
@@ -4028,11 +4063,11 @@ export default function App() {
             </button>
           </div>
 
-          {liveMatches.length > 0 && (
+          {visibleLiveMatches.length > 0 && (
             <div className="card home-live-strip">
               <div className="section-title">Shared Live Matches</div>
               <div className="matches-list live-matches-row">
-                {liveMatches.map((match) => (
+                {visibleLiveMatches.map((match) => (
                   <div className="match-history-card" key={match.id}>
                     <div className="match-history-meta">
                       <span>{match.date || 'No date'}</span>

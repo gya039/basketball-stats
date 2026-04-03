@@ -230,7 +230,7 @@ export default function BottomDrawer({
           ? `${shotMapPlayerFilter.playerName} Heat Map`
           : shotMapTeamFilter
             ? `${shotMapTeamFilter.teamName} Heat Map`
-          : 'Shot Map'
+            : ''
 
   return (
     <div className="bottom-drawer-overlay" onClick={() => setBottomPanelOpen(false)}>
@@ -244,7 +244,7 @@ export default function BottomDrawer({
         }`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="drawer-header">
+        <div className={`drawer-header ${panelView === 'shots' ? 'drawer-header-shots' : ''}`}>
           <div className="drawer-title">{drawerTitle}</div>
           <button className="drawer-toggle-btn" onClick={() => setBottomPanelOpen(false)}>
             Close
