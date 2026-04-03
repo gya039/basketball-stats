@@ -1416,18 +1416,18 @@ button {
 
 .analytics-top-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.8fr);
+  grid-template-columns: minmax(0, 1.6fr) minmax(300px, 0.72fr);
   gap: 16px;
   align-items: start;
 }
 
 .analytics-page .shot-map-panel {
   width: 100%;
-  max-width: min(100%, 420px);
+  max-width: min(100%, 320px);
 }
 
 .analytics-page .shot-map-court.folded-half-court {
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 1.02 / 1;
 }
 
 .analytics-profile-head,
@@ -1472,10 +1472,38 @@ button {
 
 .analytics-player-heatmap-card {
   align-self: start;
+  justify-self: end;
+  width: min(100%, 360px);
 }
 
 .analytics-player-heatmap-card .analytics-heatmap-head {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
+}
+
+.analytics-player-heatmap-card .analytics-heatmap-title {
+  font-size: 22px;
+}
+
+.analytics-heatmap-card-compact {
+  padding: 14px;
+}
+
+.analytics-heatmap-card-compact .shot-map-wrap {
+  max-width: 320px;
+}
+
+.analytics-heatmap-card-compact .shot-map-court.folded-half-court {
+  aspect-ratio: 1 / 1;
+}
+
+.analytics-heatmap-card-compact .shot-map-legend {
+  margin-top: 10px;
+  gap: 10px;
+  font-size: 11px;
+}
+
+.analytics-heatmap-card-compact .match-detail-inline-stats {
+  font-size: 11px;
 }
 
 .analytics-history-list {
@@ -3787,7 +3815,7 @@ button {
   width: min(92vw, 920px);
   max-height: min(82svh, 760px);
   padding: 12px 14px;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .shot-map-pair-grid {
@@ -3804,13 +3832,25 @@ button {
 
 .player-heatmap-drawer .shot-map-court.folded-half-court,
 .team-heatmap-drawer .shot-map-court.folded-half-court {
-  aspect-ratio: 1.22 / 1;
+  aspect-ratio: 140 / 150;
   min-height: 0;
 }
 
 .player-heatmap-drawer .boxscore-panel,
 .team-heatmap-drawer .boxscore-panel {
   overflow: visible;
+  justify-items: center;
+}
+
+.player-heatmap-drawer .shot-map-wrap,
+.team-heatmap-drawer .shot-map-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.player-heatmap-drawer .shot-map-panel,
+.team-heatmap-drawer .shot-map-panel {
+  max-width: min(100%, 560px);
 }
 
 .player-heatmap-drawer .shot-map-legend,
@@ -4503,15 +4543,16 @@ button {
   }
 
   .analytics-page .shot-map-panel {
-    max-width: min(100%, 320px);
+    max-width: min(100%, 280px);
   }
 
   .analytics-player-heatmap-card {
     padding: 14px;
+    width: min(100%, 300px);
   }
 
   .analytics-page .shot-map-court.folded-half-court {
-    aspect-ratio: 1.08 / 1;
+    aspect-ratio: 1 / 1;
   }
 
   .analytics-history-list {

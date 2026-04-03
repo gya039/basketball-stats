@@ -3851,9 +3851,10 @@ export default function App() {
     )
   }
 
-  function renderSeasonHeatMapCard(title, shots, heatCells) {
+  function renderSeasonHeatMapCard(title, shots, heatCells, options = {}) {
+    const { compact = false } = options
     return (
-      <div className="analytics-heatmap-card">
+      <div className={`analytics-heatmap-card ${compact ? 'analytics-heatmap-card-compact' : ''}`}>
         <div className="analytics-heatmap-head">
           <div>
             <div className="section-title">Heat Map</div>
@@ -4779,13 +4780,12 @@ export default function App() {
                       <div className="season-total-card"><span>PF / Game</span><strong>{selectedHomeProfile.avgFoul}</strong></div>
                     </div>
                   </div>
-                  <div className="card analytics-heatmap-card analytics-player-heatmap-card">
-                    {renderSeasonHeatMapCard(
-                      `${homeTeam.name} - ${getDisplayName(selectedHomeProfile)}`,
-                      selectedHomeProfile.shotMap,
-                      buildHeatGrid(selectedHomeProfile.shotMap)
-                    )}
-                  </div>
+                  {renderSeasonHeatMapCard(
+                    `${homeTeam.name} - ${getDisplayName(selectedHomeProfile)}`,
+                    selectedHomeProfile.shotMap,
+                    buildHeatGrid(selectedHomeProfile.shotMap),
+                    { compact: true }
+                  )}
                   </div>
 
                   <div className="card analytics-history-card">
