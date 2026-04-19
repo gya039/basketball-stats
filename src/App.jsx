@@ -1394,6 +1394,8 @@ export default function App() {
   }
 
   async function loadLiveMatchesFromSupabase(teamIdOverride = null) {
+    if (!navigator.onLine) return
+
     const selectedTeamId =
       teamIdOverride || loadJSON(STORAGE_KEYS.selectedHomeTeamId, '') || homeTeamId || null
 
@@ -1420,6 +1422,27 @@ export default function App() {
   async function resumeLiveMatch(matchId, options = {}) {
     const { remote = false, silent = false } = options
 
+    // If offline, use local state — don't hit the network at all
+    if (!navigator.onLine) {
+      // Already loaded in state — just stay on court
+      if (currentMatch && currentMatchId === matchId) return
+
+      // App was reloaded offline — try restoring from localStorage
+      const saved = loadJSON(STORAGE_KEYS.currentMatch, null)
+      if (saved && saved.matchId === matchId && saved.match) {
+        setCurrentMatchId(saved.matchId)
+        setCurrentMatch(saved.match)
+        setSelectedTeam('home')
+        setSelectedPlayerId(saved.match.home?.onCourt?.[0] || '')
+        setScreen('live')
+        return
+      }
+
+      // No local data available
+      alert('You are offline and no local match data was found. Please reconnect to resume.')
+      return
+    }
+
     const { data: liveMatchRow, error: liveMatchError } = await supabase
       .from('matches')
       .select('*')
@@ -1427,6 +1450,11 @@ export default function App() {
       .single()
 
     if (liveMatchError) {
+      // If offline, stay on the current screen with local state rather than alerting
+      if (!navigator.onLine) {
+        console.warn('Offline — keeping local match state.')
+        return
+      }
       console.error('Failed to load selected live match:', liveMatchError)
       if (!silent) alert('Failed to load live match.')
       return
@@ -1439,6 +1467,10 @@ export default function App() {
       .order('created_at', { ascending: true })
 
     if (liveEventsError) {
+      if (!navigator.onLine) {
+        console.warn('Offline — keeping local match events.')
+        return
+      }
       console.error('Failed to load selected live match events:', liveEventsError)
       if (!silent) alert('Failed to load live match events.')
       return
@@ -1596,6 +1628,13 @@ export default function App() {
 
     loadAppData()
   }, [])
+
+  // Persist currentMatch to localStorage so it survives page reloads offline
+  useEffect(() => {
+    if (currentMatch && currentMatchId) {
+      saveJSON(STORAGE_KEYS.currentMatch, { match: currentMatch, matchId: currentMatchId })
+    }
+  }, [currentMatch, currentMatchId])
 
   // Enter fullscreen on live screen to hide Android nav bar and address bar
   useEffect(() => {
