@@ -1597,6 +1597,26 @@ export default function App() {
     loadAppData()
   }, [])
 
+  // Enter fullscreen on live screen to hide Android nav bar and address bar
+  useEffect(() => {
+    const el = document.documentElement
+    if (screen === 'live') {
+      const requestFS =
+        el.requestFullscreen ||
+        el.webkitRequestFullscreen ||
+        el.mozRequestFullScreen ||
+        el.msRequestFullscreen
+      if (requestFS) requestFS.call(el).catch(() => {})
+    } else {
+      const exitFS =
+        document.exitFullscreen ||
+        document.webkitExitFullscreen ||
+        document.mozCancelFullScreen ||
+        document.msExitFullscreen
+      if (exitFS && document.fullscreenElement) exitFS.call(document).catch(() => {})
+    }
+  }, [screen])
+
   // Watch online/offline transitions and update the indicator + reconnect-sync flag
   useEffect(() => {
     if (!isOnline) {
