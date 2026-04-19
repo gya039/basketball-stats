@@ -15,6 +15,7 @@ const STORAGE_KEYS = {
   homeTeam: 'basketball_home_team_v11',
   savedMatches: 'basketball_saved_matches_v11',
   currentMatch: 'basketball_current_match_v11',
+  liveMatches: 'basketball_live_matches_v11',
   homeCoachName: 'basketball_home_coach_name_v11',
   homeInjuredPlayers: 'basketball_home_injured_players_v1',
   discardedMatchIds: 'basketball_discarded_match_ids_v1',
@@ -1394,7 +1395,11 @@ export default function App() {
   }
 
   async function loadLiveMatchesFromSupabase(teamIdOverride = null) {
-    if (!navigator.onLine) return
+    if (!navigator.onLine) {
+      const cached = loadJSON(STORAGE_KEYS.liveMatches, null)
+      if (cached) setLiveMatches(cached)
+      return
+    }
 
     const selectedTeamId =
       teamIdOverride || loadJSON(STORAGE_KEYS.selectedHomeTeamId, '') || homeTeamId || null
@@ -1416,7 +1421,9 @@ export default function App() {
       return
     }
 
-    setLiveMatches(liveMatchRows || [])
+    const rows = liveMatchRows || []
+    setLiveMatches(rows)
+    saveJSON(STORAGE_KEYS.liveMatches, rows)
   }
 
   async function resumeLiveMatch(matchId, options = {}) {
