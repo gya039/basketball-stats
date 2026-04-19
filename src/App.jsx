@@ -8,6 +8,8 @@ import CourtLayout from './components/CourtLayout'
 import SelectedPlayerDock from './components/SelectedPlayerDock'
 import BottomDrawer from './components/BottomDrawer'
 import MatchDetailView from './components/MatchDetailView'
+import ConnectionStatus from './components/ConnectionStatus'
+import { useOnlineStatus } from './hooks/useOnlineStatus'
 
 const STORAGE_KEYS = {
   homeTeam: 'basketball_home_team_v11',
@@ -1097,11 +1099,16 @@ export default function App() {
   const [hasLoaded, setHasLoaded] = useState(false)
   const [selectedSavedMatch, setSelectedSavedMatch] = useState(null)
   const [liveMatches, setLiveMatches] = useState([])
+  const [syncStatus, setSyncStatus] = useState('live') // 'live' | 'offline' | 'syncing'
   const skipNextLiveSyncRef = useRef(false)
   const pullRefreshStartRef = useRef(null)
   const pullRefreshDistanceRef = useRef(0)
   const courtHoldTimeoutRef = useRef(null)
   const courtPressRef = useRef(null)
+  const pendingSyncRef = useRef(false)         // true when events recorded offline need pushing
+  const isSyncingAfterReconnectRef = useRef(false) // true while draining queue after reconnect
+
+  const isOnline = useOnlineStatus()
 
   const [homeTeam, setHomeTeam] = useState({
     name: 'Loading team...',
@@ -1590,6 +1597,23 @@ export default function App() {
     loadAppData()
   }, [])
 
+  // Watch online/offline transitions and update the indicator + reconnect-sync flag
+  useEffect(() => {
+    if (!isOnline) {
+      setSyncStatus('offline')
+      return
+    }
+    // Just came back online
+    if (pendingSyncRef.current) {
+      isSyncingAfterReconnectRef.current = true
+      setSyncStatus('syncing')
+      // The main sync useEffect below will re-run (isOnline is in its deps)
+      // and will push local events to Supabase, then clear these flags
+    } else {
+      setSyncStatus('live')
+    }
+  }, [isOnline])
+
   useEffect(() => {
     if (!hasLoaded || !currentMatch || !currentMatchId) return
 
@@ -1599,6 +1623,12 @@ export default function App() {
     }
 
     async function syncLiveMatch() {
+      // If offline, queue the sync for when connectivity returns
+      if (!navigator.onLine) {
+        pendingSyncRef.current = true
+        return
+      }
+
       const liveHomeEvents = currentMatch.events.filter((e) => e.teamKey === 'home')
       const liveAwayEvents = currentMatch.events.filter((e) => e.teamKey === 'away')
       const liveScore = {
@@ -1667,10 +1697,15 @@ export default function App() {
           console.error('Failed to sync live match events:', insertEventsError)
         }
       }
+
+      // Sync succeeded — clear offline flags and show live indicator
+      pendingSyncRef.current = false
+      isSyncingAfterReconnectRef.current = false
+      setSyncStatus('live')
     }
 
     syncLiveMatch()
-  }, [currentMatch, currentMatchId, hasLoaded, homeTeamId])
+  }, [currentMatch, currentMatchId, hasLoaded, homeTeamId, isOnline])
 
   function handleMenuTouchStart(e) {
     if (screen === 'live' || screen === 'summary' || selectedSavedMatch || isRefreshingMenuData) return
@@ -1730,6 +1765,9 @@ export default function App() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'matches' },
         async (payload) => {
+          // Don't let stale server state overwrite local events during reconnect sync
+          if (isSyncingAfterReconnectRef.current) return
+
           await loadLiveMatchesFromSupabase()
           await loadSavedMatchesFromSupabase()
 
@@ -1753,6 +1791,9 @@ export default function App() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'match_events' },
         async (payload) => {
+          // Don't let stale server state overwrite local events during reconnect sync
+          if (isSyncingAfterReconnectRef.current) return
+
           const changedMatchId = payload.new?.match_id || payload.old?.match_id
 
           if (changedMatchId && currentMatchId && changedMatchId === currentMatchId && screen === 'live') {
@@ -3959,7 +4000,7 @@ export default function App() {
 
   return (
     <div className={`app ${screen === 'live' ? 'live-mode' : ''}`}>
-      {(pullRefreshLabel || isRefreshingMenuData) && screen !== 'live' && (
+{(pullRefreshLabel || isRefreshingMenuData) && screen !== 'live' && (
         <div className={`pull-refresh-indicator ${isRefreshingMenuData ? 'active' : ''}`}>
           {pullRefreshLabel}
         </div>
@@ -4500,6 +4541,8 @@ export default function App() {
           <div className="court-background">
             <div className="court-overlay-lines" />
           </div>
+
+          <ConnectionStatus status={syncStatus} />
 
           <LiveScoreboard
             currentMatch={currentMatch}

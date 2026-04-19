@@ -4791,7 +4791,7 @@ button {
   
 }
 
-@media (min-width: 900px) and (max-width: 1180px) and (orientation: landscape) and (pointer: coarse) {
+@media (min-width: 900px) and (max-width: 1180px) and (orientation: landscape) {
   .home-page {
     padding: 18px;
     gap: 16px;
@@ -5055,6 +5055,413 @@ button {
 
   .log-desc {
     font-size: 12px;
+  }
+
+  .log-score-mini {
+    font-size: 10px;
+    margin-top: 3px;
+  }
+
+  .undo-row-btn {
+    min-height: 34px;
+    padding: 7px 9px;
+    font-size: 10px;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Short landscape touch tablets (e.g. Acer Iconia ~962×601)
+   Overrides the 900-1180px rule above for devices with very little height.
+   Aggressively shrinks the scoreboard so the court gets enough room.
+───────────────────────────────────────────────────────────────────────────── */
+@media (min-width: 900px) and (max-width: 1180px) and (orientation: landscape) and (max-height: 640px) {
+  .live-court-page {
+    padding: 4px;
+    gap: 4px;
+  }
+
+  .live-topbar {
+    grid-template-columns: 0.72fr 1.18fr 0.72fr;
+    gap: 4px;
+    max-height: 110px;
+    overflow: hidden;
+  }
+
+  /* Score blocks — left and right */
+  .score-team-block {
+    min-height: 0;
+    padding: 4px 8px;
+    overflow: hidden;
+  }
+
+  .score-team-label {
+    font-size: 8px;
+  }
+
+  .score-team-name {
+    font-size: 12px;
+  }
+
+  .score-big {
+    font-size: 22px;
+    margin: 0;
+  }
+
+  .score-sub,
+  .score-sub-total,
+  .score-team-kicker,
+  .score-quarter-note {
+    font-size: 8px;
+  }
+
+  /* Center control block — ultra compact */
+  .score-center-block {
+    padding: 3px 5px;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .score-center-head {
+    display: none;
+  }
+
+  .score-center-topline {
+    display: none;
+  }
+
+  .quarter-controls {
+    margin: 0;
+  }
+
+  .quarter-label {
+    font-size: 12px;
+    line-height: 1;
+  }
+
+  .quarter-btn {
+    width: 20px;
+    height: 20px;
+    font-size: 9px;
+  }
+
+  .quarter-over-btn {
+    min-height: 18px;
+    padding: 1px 5px;
+    font-size: 8px;
+  }
+
+  /* 5 action buttons in 3 columns = 2 rows */
+  .center-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 2px;
+  }
+
+  .mini-panel-btn {
+    min-height: 18px;
+    padding: 1px 4px;
+    font-size: 8px;
+  }
+
+  .score-center-footer {
+    margin: 0;
+  }
+
+  .end-btn {
+    min-height: 18px;
+    padding: 1px 5px;
+    font-size: 8px;
+  }
+
+  /* Middle court + player panels */
+  .live-main-layout {
+    grid-template-columns: 130px 1fr 130px;
+    gap: 4px;
+    min-height: 0;
+  }
+
+  .side-team-column {
+    gap: 2px;
+  }
+
+  .side-staff-btn {
+    min-height: 24px;
+    padding: 2px 5px;
+    font-size: 9px;
+  }
+
+  .side-player {
+    min-height: 0;
+    padding: 2px 4px;
+    border-radius: 8px;
+  }
+
+  .side-player-number {
+    font-size: 11px;
+  }
+
+  .side-player-name {
+    font-size: 9px;
+  }
+
+  .side-player-statline {
+    font-size: 7px;
+  }
+
+  .side-player-statline span {
+    font-size: 7px;
+    padding: 1px 3px;
+  }
+
+  .foul-badge {
+    min-width: 16px;
+    height: 16px;
+    font-size: 7px;
+  }
+
+  .court-stage {
+    min-height: 0;
+  }
+
+  /* Bottom player dock */
+  .selected-player-dock {
+    grid-template-columns: minmax(190px, 1fr) minmax(150px, 0.65fr);
+    gap: 4px;
+  }
+
+  .selected-main-card {
+    min-height: 0;
+    padding: 5px 7px;
+  }
+
+  .selected-player-header {
+    grid-template-columns: 48px 1fr;
+    gap: 5px;
+  }
+
+  .selected-jersey-card {
+    width: 48px;
+    height: 58px;
+  }
+
+  .selected-player-name {
+    font-size: 14px;
+  }
+
+  .selected-player-subline {
+    font-size: 9px;
+    margin-top: 1px;
+  }
+
+  .selected-stat-inline span,
+  .selected-stat-grid span {
+    min-height: 16px;
+    padding: 2px 4px;
+    font-size: 8px;
+  }
+
+  .action-dock-grid {
+    gap: 3px;
+    padding: 4px;
+  }
+
+  .dock-action {
+    min-height: 38px;
+    font-size: 9px;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Wide low-DPR touch tablets (e.g. Acer Iconia 1280×800, 1× DPR)
+   These devices sit above the 1180px iPad breakpoint but are touch-based,
+   so they miss both the iPad rule (max-width: 1180px) and the desktop rule
+   (pointer: fine). This rule closes that gap without touching either.
+───────────────────────────────────────────────────────────────────────────── */
+@media (min-width: 1181px) and (pointer: coarse) and (orientation: landscape) {
+  .live-court-page {
+    height: 100svh;
+    padding: 8px;
+    overflow: hidden;
+  }
+
+  .live-topbar {
+    grid-template-columns: 0.75fr 1.28fr 0.75fr;
+    gap: 8px;
+  }
+
+  .score-team-block,
+  .score-center-block,
+  .selected-main-card,
+  .action-dock-grid,
+  .bottom-panel-court {
+    padding: 9px;
+  }
+
+  .score-team-block {
+    min-height: 64px;
+  }
+
+  .score-team-name {
+    font-size: 18px;
+  }
+
+  .score-big {
+    font-size: 36px;
+    margin: 2px 0 4px;
+  }
+
+  .score-sub {
+    font-size: 10px;
+  }
+
+  .score-center-block {
+    min-width: 220px;
+    gap: 6px;
+  }
+
+  .quarter-label {
+    font-size: 22px;
+  }
+
+  .quarter-btn {
+    width: 34px;
+    height: 34px;
+  }
+
+  .quarter-over-btn,
+  .mini-panel-btn,
+  .end-btn {
+    min-height: 36px;
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+
+  .live-main-layout {
+    grid-template-columns: 160px 1fr 160px;
+    gap: 10px;
+    min-height: 300px;
+  }
+
+  .side-team-column {
+    gap: 5px;
+  }
+
+  .side-staff-btn {
+    min-height: 52px;
+    padding: 6px 8px;
+  }
+
+  .side-player {
+    min-height: 48px;
+    padding: 5px 5px;
+    border-radius: 12px;
+  }
+
+  .side-player-number {
+    font-size: 17px;
+  }
+
+  .side-player-name {
+    font-size: 13px;
+    font-weight: 900;
+    color: #ffffff;
+  }
+
+  .side-player-statline {
+    font-size: 10px;
+  }
+
+  .side-player-statline span {
+    font-size: 10px;
+    padding: 2px 5px;
+    background: rgba(255, 255, 255, 0.11);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #ffffff;
+  }
+
+  .foul-badge {
+    min-width: 26px;
+    height: 26px;
+    font-size: 9px;
+  }
+
+  .court-stage {
+    min-height: 300px;
+  }
+
+  .court-logo-watermark {
+    width: 76px;
+    height: 76px;
+  }
+
+  .center-court-visual::after {
+    width: 86px;
+    height: 86px;
+  }
+
+  .selected-player-dock {
+    grid-template-columns: minmax(240px, 1fr) minmax(190px, 0.68fr);
+    gap: 8px;
+  }
+
+  .selected-main-card {
+    min-height: 96px;
+    padding: 12px;
+  }
+
+  .selected-player-header {
+    grid-template-columns: 72px 1fr;
+    gap: 8px;
+  }
+
+  .selected-jersey-card {
+    width: 72px;
+    height: 88px;
+  }
+
+  .selected-player-name {
+    font-size: clamp(18px, 2vw, 24px);
+  }
+
+  .selected-player-subline {
+    font-size: 11px;
+    margin-top: 4px;
+  }
+
+  .selected-stat-inline span,
+  .selected-stat-grid span {
+    min-height: 22px;
+    padding: 4px 6px;
+    font-size: 9px;
+  }
+
+  .action-dock-grid {
+    gap: 6px;
+  }
+
+  .dock-action {
+    min-height: 54px;
+    font-size: 9px;
+  }
+
+  .dock-action::before {
+    font-size: 12px;
+  }
+
+  .tiny-override-btn {
+    min-height: 36px;
+    padding: 7px 10px;
+    font-size: 10px;
+  }
+
+  .bottom-panel-court {
+    max-height: min(64svh, 680px);
+    padding: 12px 14px;
+  }
+
+  .drawer-header {
+    margin-bottom: 6px;
+    padding-bottom: 6px;
   }
 
   .log-score-mini {
