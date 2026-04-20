@@ -4360,6 +4360,7 @@ export default function App() {
                 }))
               }
               placeholder="Enter home team name"
+              autoComplete="off"
             />
 
             <label className="field-label">Coach Name</label>
@@ -4373,6 +4374,7 @@ export default function App() {
                 }))
               }
               placeholder="Enter home coach name"
+              autoComplete="off"
             />
 
             <div className="grid-two team-colors-grid">
@@ -4426,12 +4428,14 @@ export default function App() {
                 value={homePlayerName}
                 onChange={(e) => setHomePlayerName(e.target.value)}
                 placeholder="Player name"
+                autoComplete="off"
               />
               <input
                 className="text-input jersey-input"
                 value={homePlayerNumber}
                 onChange={(e) => setHomePlayerNumber(e.target.value)}
                 placeholder="Jersey #"
+                autoComplete="off"
               />
               <button className="primary-btn" onClick={addHomePlayer}>
                 Add
@@ -4486,6 +4490,7 @@ export default function App() {
                 }))
               }
               placeholder="Enter opponent team name"
+              autoComplete="off"
             />
 
             <label className="field-label">Opponent Coach Name</label>
@@ -4499,6 +4504,7 @@ export default function App() {
                 }))
               }
               placeholder="Enter opponent coach name"
+              autoComplete="off"
             />
 
             <div className="grid-two">
