@@ -5083,27 +5083,27 @@ button {
   .live-topbar {
     grid-template-columns: 0.72fr 1.18fr 0.72fr;
     gap: 4px;
-    max-height: 110px;
+    max-height: 118px;
     overflow: hidden;
   }
 
   /* Score blocks — left and right */
   .score-team-block {
     min-height: 0;
-    padding: 4px 8px;
+    padding: 3px 7px;
     overflow: hidden;
   }
 
   .score-team-label {
-    font-size: 8px;
+    font-size: 7px;
   }
 
   .score-team-name {
-    font-size: 12px;
+    font-size: 11px;
   }
 
   .score-big {
-    font-size: 22px;
+    font-size: 20px;
     margin: 0;
   }
 
@@ -5111,22 +5111,24 @@ button {
   .score-sub-total,
   .score-team-kicker,
   .score-quarter-note {
-    font-size: 8px;
+    font-size: 7px;
   }
 
-  /* Center control block — ultra compact */
+  /* Center control block — ultra compact, start from top so End Match is reachable */
   .score-center-block {
-    padding: 3px 5px;
+    padding: 2px 5px;
     gap: 2px;
     min-width: 0;
+    justify-content: flex-start;
   }
 
   .score-center-head {
-    display: none;
+    font-size: 7px;
+    letter-spacing: 0.06em;
   }
 
   .score-center-topline {
-    display: none;
+    gap: 4px;
   }
 
   .quarter-controls {
@@ -5134,33 +5136,33 @@ button {
   }
 
   .quarter-label {
-    font-size: 12px;
+    font-size: 11px;
     line-height: 1;
   }
 
   .quarter-btn {
-    width: 20px;
-    height: 20px;
-    font-size: 9px;
+    width: 18px;
+    height: 18px;
+    font-size: 8px;
   }
 
   .quarter-over-btn {
-    min-height: 18px;
+    min-height: 16px;
     padding: 1px 5px;
     font-size: 8px;
   }
 
-  /* 5 action buttons in 3 columns = 2 rows */
+  /* 5 action buttons in one row */
   .center-actions {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: repeat(5, 1fr);
     gap: 2px;
   }
 
   .mini-panel-btn {
-    min-height: 18px;
-    padding: 1px 4px;
-    font-size: 8px;
+    min-height: 16px;
+    padding: 1px 2px;
+    font-size: 7px;
   }
 
   .score-center-footer {
@@ -5168,16 +5170,21 @@ button {
   }
 
   .end-btn {
-    min-height: 18px;
+    min-height: 16px;
     padding: 1px 5px;
     font-size: 8px;
   }
 
   /* Middle court + player panels */
   .live-main-layout {
-    grid-template-columns: 130px 1fr 130px;
+    grid-template-columns: 148px 1fr 148px;
     gap: 4px;
     min-height: 0;
+  }
+
+  /* Cap the bottom drawer so it doesn't fill the whole screen */
+  .bottom-panel-court {
+    max-height: min(42svh, 230px);
   }
 
   .side-team-column {
@@ -5188,6 +5195,15 @@ button {
     min-height: 24px;
     padding: 2px 5px;
     font-size: 9px;
+  }
+
+  .side-staff-btn small {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    font-size: 8px;
   }
 
   .side-player {
@@ -5777,5 +5793,143 @@ button {
   .log-desc,
   .log-score-mini {
     font-size: 11px;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Acer Iconia final override — must be LAST in file so it beats the generic
+   pointer:coarse landscape breakpoints that come before it.
+───────────────────────────────────────────────────────────────────────────── */
+@media (min-width: 900px) and (max-width: 1180px) and (orientation: landscape) and (max-height: 640px) {
+  .live-topbar {
+    grid-template-columns: 0.72fr 1.18fr 0.72fr;
+    gap: 4px;
+    max-height: 118px;
+    overflow: hidden;
+  }
+
+  .score-center-block {
+    padding: 2px 5px;
+    gap: 2px;
+    min-height: 0;
+    justify-content: flex-start;
+  }
+
+  .score-center-head {
+    font-size: 7px;
+    letter-spacing: 0.06em;
+  }
+
+  .quarter-label {
+    font-size: 11px;
+    min-width: 0;
+  }
+
+  .quarter-over-btn {
+    min-height: 16px;
+    padding: 1px 5px;
+    font-size: 8px;
+  }
+
+  .center-actions {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 2px;
+  }
+
+  .mini-panel-btn {
+    min-height: 16px;
+    padding: 1px 2px;
+    font-size: 7px;
+  }
+
+  .end-btn {
+    min-height: 16px;
+    padding: 1px 5px;
+    font-size: 8px;
+  }
+
+  .live-main-layout {
+    grid-template-columns: 148px 1fr 148px;
+    gap: 4px;
+  }
+
+  .bottom-panel-court {
+    max-height: min(42svh, 230px);
+  }
+
+  .side-staff-btn {
+    min-height: 24px;
+    padding: 2px 5px;
+    font-size: 9px;
+  }
+
+  .side-staff-btn small {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    font-size: 8px;
+  }
+
+  .side-player-number {
+    font-size: 11px;
+  }
+
+  .side-player-name {
+    font-size: 9px;
+  }
+
+  .side-player-statline {
+    font-size: 7px;
+    gap: 2px;
+  }
+
+  .side-player-statline span {
+    font-size: 7px;
+    padding: 1px 3px;
+  }
+
+  /* Shot map drawer — override higher-specificity rules so it fits on Acer */
+  .bottom-panel-court.shot-map-drawer,
+  .bottom-panel-court.shot-map-drawer.player-heatmap-drawer,
+  .bottom-panel-court.shot-map-drawer.team-heatmap-drawer {
+    max-height: min(54svh, 310px);
+    width: min(94vw, 660px);
+    padding: 6px 8px 6px;
+    overflow: hidden;
+  }
+
+  .bottom-panel-court.shot-map-drawer .drawer-header.drawer-header-shots {
+    margin-bottom: 2px;
+    padding-bottom: 0;
+  }
+
+  .shot-map-pair-grid {
+    gap: 6px;
+    align-items: center;
+  }
+
+  /* Constrain each half-court so both fit side by side without scrolling */
+  .player-heatmap-drawer .shot-map-court.folded-half-court,
+  .team-heatmap-drawer .shot-map-court.folded-half-court {
+    max-height: 170px;
+  }
+
+  .player-heatmap-drawer .shot-map-title,
+  .team-heatmap-drawer .shot-map-title {
+    font-size: 10px;
+    margin: 0 0 2px;
+  }
+
+  .player-heatmap-drawer .shot-map-wrap,
+  .team-heatmap-drawer .shot-map-wrap {
+    padding-top: 0;
+  }
+
+  .player-heatmap-drawer .shot-map-panel,
+  .team-heatmap-drawer .shot-map-panel {
+    max-width: 100%;
   }
 }

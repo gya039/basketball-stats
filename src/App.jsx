@@ -10,6 +10,7 @@ import BottomDrawer from './components/BottomDrawer'
 import MatchDetailView from './components/MatchDetailView'
 import ConnectionStatus from './components/ConnectionStatus'
 import { useOnlineStatus } from './hooks/useOnlineStatus'
+import './components/AppDialog.css'
 
 const STORAGE_KEYS = {
   homeTeam: 'basketball_home_team_v11',
@@ -1108,8 +1109,24 @@ export default function App() {
   const courtPressRef = useRef(null)
   const pendingSyncRef = useRef(false)         // true when events recorded offline need pushing
   const isSyncingAfterReconnectRef = useRef(false) // true while draining queue after reconnect
+  const syncedEventIdsRef = useRef(new Set())  // IDs of events confirmed in Supabase
 
   const isOnline = useOnlineStatus()
+
+  const [appDialog, setAppDialog] = useState(null)
+
+  function appAlert(message) {
+    return new Promise((resolve) => setAppDialog({ type: 'alert', message, resolve }))
+  }
+  function appConfirm(message) {
+    return new Promise((resolve) => setAppDialog({ type: 'confirm', message, resolve }))
+  }
+  function appPrompt(message, defaultValue = '') {
+    return new Promise((resolve) => setAppDialog({ type: 'prompt', message, defaultValue, resolve }))
+  }
+  function closeDialog(result) {
+    setAppDialog((prev) => { if (prev) prev.resolve(result); return null })
+  }
 
   const [homeTeam, setHomeTeam] = useState({
     name: 'Loading team...',
@@ -1446,7 +1463,7 @@ export default function App() {
       }
 
       // No local data available
-      alert('You are offline and no local match data was found. Please reconnect to resume.')
+      await appAlert('You are offline and no local match data was found. Please reconnect to resume.')
       return
     }
 
@@ -1463,7 +1480,7 @@ export default function App() {
         return
       }
       console.error('Failed to load selected live match:', liveMatchError)
-      if (!silent) alert('Failed to load live match.')
+      if (!silent) await appAlert('Failed to load live match.')
       return
     }
 
@@ -1479,16 +1496,30 @@ export default function App() {
         return
       }
       console.error('Failed to load selected live match events:', liveEventsError)
-      if (!silent) alert('Failed to load live match events.')
+      if (!silent) await appAlert('Failed to load live match events.')
       return
     }
 
-    const liveEvents = (liveEventRows || []).map((row) => row.event_data)
-    const liveMatch = mapSupabaseMatchRow(liveMatchRow, liveEvents)
+    const remoteEvents = (liveEventRows || []).map((row) => row.event_data)
+    const remoteEventIds = new Set(remoteEvents.map((e) => e.id))
 
-    if (remote) {
+    // When another device triggers a reload, preserve any events we recorded offline
+    // that haven't made it to Supabase yet, then merge them in
+    let mergedEvents = remoteEvents
+    if (remote && currentMatch) {
+      const pendingLocalEvents = currentMatch.events.filter(
+        (e) => !syncedEventIdsRef.current.has(e.id) && !remoteEventIds.has(e.id)
+      )
+      if (pendingLocalEvents.length > 0) {
+        mergedEvents = [...remoteEvents, ...pendingLocalEvents].sort((a, b) => a.createdAt - b.createdAt)
+      }
       skipNextLiveSyncRef.current = true
     }
+
+    // Track which events are now confirmed in Supabase
+    syncedEventIdsRef.current = new Set(remoteEventIds)
+
+    const liveMatch = mapSupabaseMatchRow(liveMatchRow, mergedEvents)
 
     setBottomPanelOpen(false)
     setCurrentMatchId(liveMatchRow.id)
@@ -1530,7 +1561,7 @@ export default function App() {
 
       if (teamsError || playersError || matchesError || eventsError) {
         console.error('Failed to export club data:', teamsError || playersError || matchesError || eventsError)
-        alert('Failed to export club data.')
+        await appAlert('Failed to export club data.')
         return
       }
 
@@ -1571,11 +1602,11 @@ export default function App() {
     }
   }
 
-  function exportSeasonStatsCsv() {
+  async function exportSeasonStatsCsv() {
     const players = seasonSummary.players
 
     if (!players.length) {
-      alert('No completed match stats available to export yet.')
+      await appAlert('No completed match stats available to export yet.')
       return
     }
 
@@ -1739,28 +1770,34 @@ export default function App() {
         return
       }
 
-      const { error: deleteEventsError } = await supabase
-        .from('match_events')
-        .delete()
-        .eq('match_id', currentMatchId)
+      // Incremental sync — never delete-all, only push what changed
+      const localEventIds = new Set(currentMatch.events.map((e) => e.id))
 
-      if (deleteEventsError) {
-        console.error('Failed to clear live match events:', deleteEventsError)
-        return
+      // DELETE events that were removed locally (undo) but are still in Supabase
+      const toDelete = [...syncedEventIdsRef.current].filter((id) => !localEventIds.has(id))
+      for (const id of toDelete) {
+        const { error } = await supabase
+          .from('match_events')
+          .delete()
+          .eq('match_id', currentMatchId)
+          .filter('event_data->>id', 'eq', id)
+        if (!error) syncedEventIdsRef.current.delete(id)
       }
 
-      if (currentMatch.events.length > 0) {
-        const eventRows = currentMatch.events.map((evt) => ({
+      // INSERT only events not yet in Supabase
+      const toInsert = currentMatch.events.filter((e) => !syncedEventIdsRef.current.has(e.id))
+      if (toInsert.length > 0) {
+        const eventRows = toInsert.map((evt) => ({
           match_id: currentMatchId,
           event_data: evt,
         }))
-
         const { error: insertEventsError } = await supabase
           .from('match_events')
           .insert(eventRows)
-
-        if (insertEventsError) {
-          console.error('Failed to sync live match events:', insertEventsError)
+        if (!insertEventsError) {
+          toInsert.forEach((evt) => syncedEventIdsRef.current.add(evt.id))
+        } else {
+          console.error('Failed to sync new events:', insertEventsError)
         }
       }
 
@@ -1993,17 +2030,17 @@ export default function App() {
     const number = homePlayerNumber.trim()
 
     if (!name || !number) {
-      alert('Enter both player name and jersey number.')
+      await appAlert('Enter both player name and jersey number.')
       return
     }
 
     if (homeTeam.players.some((p) => p.number === number)) {
-      alert('That jersey number already exists on the home team.')
+      await appAlert('That jersey number already exists on the home team.')
       return
     }
 
     if (!homeTeamId) {
-      alert('Home team is still loading.')
+      await appAlert('Home team is still loading.')
       return
     }
 
@@ -2019,7 +2056,7 @@ export default function App() {
 
     if (error) {
       console.error('Failed to add player:', error)
-      alert('Failed to add player.')
+      await appAlert('Failed to add player.')
       return
     }
 
@@ -2036,7 +2073,7 @@ export default function App() {
 
     if (error) {
       console.error('Failed to remove player:', error)
-      alert('Failed to remove player.')
+      await appAlert('Failed to remove player.')
       return
     }
 
@@ -2050,17 +2087,17 @@ export default function App() {
     }))
   }
 
-  function addOpponentPlayer() {
+  async function addOpponentPlayer() {
     const name = opponentPlayerName.trim()
     const number = opponentPlayerNumber.trim()
 
     if (!name || !number) {
-      alert('Enter both opponent player name and jersey number.')
+      await appAlert('Enter both opponent player name and jersey number.')
       return
     }
 
     if (newMatch.opponentPlayers.some((p) => p.number === number)) {
-      alert('That jersey number already exists on the opponent team.')
+      await appAlert('That jersey number already exists on the opponent team.')
       return
     }
 
@@ -2088,22 +2125,22 @@ export default function App() {
     setScreen('newMatch')
   }
 
-  function goToStartingFiveSetup() {
+  async function goToStartingFiveSetup() {
     const opponentName = newMatch.opponentName.trim() || 'Opponent'
     const today = getTodayDateString()
 
     if (homeTeam.players.length < 5) {
-      alert('Home team must have at least 5 players.')
+      await appAlert('Home team must have at least 5 players.')
       return
     }
 
     if (newMatch.opponentPlayers.length < 5) {
-      alert('Opponent team must have at least 5 players.')
+      await appAlert('Opponent team must have at least 5 players.')
       return
     }
 
     if (newMatch.date && newMatch.date < today) {
-      alert('Match date cannot be in the past.')
+      await appAlert('Match date cannot be in the past.')
       return
     }
 
@@ -2122,12 +2159,12 @@ export default function App() {
 
   async function startMatch() {
     if (startingFive.home.length !== 5) {
-      alert('Select exactly 5 starters for the home team.')
+      await appAlert('Select exactly 5 starters for the home team.')
       return
     }
 
     if (startingFive.away.length !== 5) {
-      alert('Select exactly 5 starters for the away team.')
+      await appAlert('Select exactly 5 starters for the away team.')
       return
     }
 
@@ -2208,7 +2245,7 @@ export default function App() {
 
     if (error) {
       console.error('Failed to create live match:', error)
-      alert('Failed to start match.')
+      await appAlert('Failed to start match.')
       return
     }
 
@@ -2220,9 +2257,9 @@ export default function App() {
     setScreen('live')
   }
 
-  function changeQuarter(delta) {
+  async function changeQuarter(delta) {
     if (!currentMatch || delta === 0) return
-    alert('Use Quarter Over to move to the next quarter.')
+    await appAlert('Use Quarter Over to move to the next quarter.')
   }
 
   function advanceQuarterFromSummary() {
@@ -2864,7 +2901,7 @@ export default function App() {
     })
   }
 
-  function finalizeFoul(override = {}) {
+  async function finalizeFoul(override = {}) {
     if (!currentMatch || !foulModal.open) return
 
     const activeFoul = { ...foulModal, ...override }
@@ -2923,7 +2960,7 @@ export default function App() {
       const player = findPlayerById(team.players, foulerId)
 
       if (fouls === 4) {
-        alert(`${formatPlayer(player)} is on 4 fouls.`)
+        await appAlert(`${formatPlayer(player)} is on 4 fouls.`)
       }
 
       const mustBeEjected = fouls >= 5 || disqualifyingFouls >= 1 || unsportsmanlikeFouls >= 2
@@ -2937,7 +2974,7 @@ export default function App() {
           message = `${formatPlayer(player)} has 2 unsportsmanlike fouls and must be ejected and substituted.`
         }
 
-        alert(message)
+        await appAlert(message)
 
         if (team.onCourt.includes(foulerId)) {
           setSubModal({
@@ -2953,10 +2990,10 @@ export default function App() {
 
     const coachFouls = getCoachFoulCount(updatedMatch.events, foulerTeamKey)
     if (coachFouls === COACH_FOUL_LIMIT - 1) {
-      alert(`${getCoachDisplayName(updatedMatch[foulerTeamKey].coachName)} is on ${coachFouls} technical fouls.`)
+      await appAlert(`${getCoachDisplayName(updatedMatch[foulerTeamKey].coachName)} is on ${coachFouls} technical fouls.`)
     }
     if (coachFouls >= COACH_FOUL_LIMIT) {
-      alert(`${getCoachDisplayName(updatedMatch[foulerTeamKey].coachName)} has been ejected on ${coachFouls} technical fouls.`)
+      await appAlert(`${getCoachDisplayName(updatedMatch[foulerTeamKey].coachName)} has been ejected on ${coachFouls} technical fouls.`)
     }
   }
 
@@ -3255,10 +3292,10 @@ export default function App() {
     return team.players.filter((player) => !team.onCourt.includes(player.id))
   }
 
-  function endMatch() {
+  async function endMatch() {
     if (!currentMatch) return
     if (currentMatch.quarter < 4) {
-      alert('You can only end the match in Q4.')
+      await appAlert('You can only end the match in Q4.')
       return
     }
     setScreen('summary')
@@ -3280,7 +3317,7 @@ export default function App() {
     }
 
     if (!currentMatchId) {
-      alert('Current live match is missing.')
+      await appAlert('Current live match is missing.')
       return
     }
 
@@ -3309,7 +3346,7 @@ export default function App() {
 
     if (matchError) {
       console.error('Failed to save match to Supabase:', matchError)
-      alert('Failed to save match.')
+      await appAlert('Failed to save match.')
       return
     }
 
@@ -3320,13 +3357,14 @@ export default function App() {
     setLiveMatches((prev) => prev.filter((match) => match.id !== currentMatchId))
     setCurrentMatch(null)
     setCurrentMatchId(null)
+    syncedEventIdsRef.current = new Set()
     setSelectedPlayerId('')
     setScreen('home')
     resetNewMatchForm()
   }
 
   async function discardCurrentMatch() {
-    const ok = window.confirm('Discard the current unfinished match?')
+    const ok = await appConfirm('Discard the current unfinished match?')
     if (!ok) return
 
     if (currentMatchId) {
@@ -3334,7 +3372,7 @@ export default function App() {
 
       if (error) {
         console.error('Failed to discard current match:', error)
-        alert('Failed to discard current match.')
+        await appAlert('Failed to discard current match.')
         return
       }
     }
@@ -3347,14 +3385,14 @@ export default function App() {
   }
 
   async function discardLiveMatch(matchId, matchupLabel = 'this live match') {
-    const ok = window.confirm(`Discard ${matchupLabel}? This cannot be undone.`)
+    const ok = await appConfirm(`Discard ${matchupLabel}? This cannot be undone.`)
     if (!ok) return
 
     const { error } = await supabase.from('matches').delete().eq('id', matchId)
 
     if (error) {
       console.error('Failed to discard selected live match:', error)
-      alert('Failed to discard live match.')
+      await appAlert('Failed to discard live match.')
       return
     }
 
@@ -3371,7 +3409,7 @@ export default function App() {
   }
 
   async function clearSavedMatches() {
-    const ok = window.confirm(`Delete all saved matches for ${homeTeam.name}?`)
+    const ok = await appConfirm(`Delete all saved matches for ${homeTeam.name}?`)
     if (!ok) return
 
     const matchIds = savedMatches
@@ -3383,7 +3421,7 @@ export default function App() {
 
       if (eventsError) {
         console.error('Failed to clear saved match events:', eventsError)
-        alert('Failed to clear saved matches.')
+        await appAlert('Failed to clear saved matches.')
         return
       }
     }
@@ -3396,7 +3434,7 @@ export default function App() {
 
     if (error) {
       console.error('Failed to clear saved matches:', error)
-      alert('Failed to clear saved matches.')
+      await appAlert('Failed to clear saved matches.')
       return
     }
 
@@ -3404,14 +3442,14 @@ export default function App() {
   }
 
   async function deleteSavedMatch(matchId, matchupLabel = 'this saved match') {
-    const ok = window.confirm(`Discard ${matchupLabel}? This will remove it across all devices.`)
+    const ok = await appConfirm(`Discard ${matchupLabel}? This will remove it across all devices.`)
     if (!ok) return
 
     const { error: eventsError } = await supabase.from('match_events').delete().eq('match_id', matchId)
 
     if (eventsError) {
       console.error('Failed to delete saved match events:', eventsError)
-      alert('Failed to discard saved match.')
+      await appAlert('Failed to discard saved match.')
       return
     }
 
@@ -3419,7 +3457,7 @@ export default function App() {
 
     if (matchError) {
       console.error('Failed to delete saved match:', matchError)
-      alert('Failed to discard saved match.')
+      await appAlert('Failed to discard saved match.')
       return
     }
 
@@ -3874,6 +3912,7 @@ export default function App() {
 
     setCurrentMatch(null)
     setCurrentMatchId(null)
+    syncedEventIdsRef.current = new Set()
     setSelectedSavedMatch(null)
     setSelectedPlayerId('')
     setSelectedTeam('home')
@@ -3897,7 +3936,7 @@ export default function App() {
 
     if (error) {
       console.error('Failed to add home team:', error)
-      alert('Failed to add team.')
+      await appAlert('Failed to add team.')
       return
     }
 
@@ -3907,7 +3946,7 @@ export default function App() {
   }
 
   async function promptAddHomeTeam() {
-    const nextName = window.prompt('Enter the new home team name')
+    const nextName = await appPrompt('Enter the new home team name')
     if (!nextName) return
     await addHomeTeam(nextName)
   }
@@ -3915,24 +3954,24 @@ export default function App() {
   async function removeCurrentHomeTeam() {
     if (!homeTeamId) return
     if (homeTeams.length <= 1) {
-      alert('You need to keep at least one home team.')
+      await appAlert('You need to keep at least one home team.')
       return
     }
 
-    const ok = window.confirm(`Remove ${homeTeam.name}? This will remove its roster from the team switcher.`)
+    const ok = await appConfirm(`Remove ${homeTeam.name}? This will remove its roster from the team switcher.`)
     if (!ok) return
 
     const { error: playersError } = await supabase.from('players').delete().eq('team_id', homeTeamId)
     if (playersError) {
       console.error('Failed to remove team players:', playersError)
-      alert('Failed to remove team players.')
+      await appAlert('Failed to remove team players.')
       return
     }
 
     const { error: teamError } = await supabase.from('teams').delete().eq('id', homeTeamId)
     if (teamError) {
       console.error('Failed to remove team:', teamError)
-      alert('Failed to remove team.')
+      await appAlert('Failed to remove team.')
       return
     }
 
@@ -3964,7 +4003,7 @@ export default function App() {
 
     if (error) {
       console.error('Failed to save home team settings:', error)
-      alert('Failed to save team changes.')
+      await appAlert('Failed to save team changes.')
       return
     }
 
@@ -5977,6 +6016,46 @@ export default function App() {
                   Start Q{currentMatch.quarter + 1}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {appDialog && (
+        <div className="app-dialog-overlay">
+          <div className="app-dialog">
+            <div className="app-dialog-message">{appDialog.message}</div>
+            {appDialog.type === 'prompt' && (
+              <input
+                id="app-dialog-input"
+                className="app-dialog-input"
+                defaultValue={appDialog.defaultValue}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') closeDialog(e.target.value)
+                  if (e.key === 'Escape') closeDialog(null)
+                }}
+              />
+            )}
+            <div className="app-dialog-actions">
+              {(appDialog.type === 'confirm' || appDialog.type === 'prompt') && (
+                <button className="app-dialog-btn secondary" onClick={() => closeDialog(appDialog.type === 'prompt' ? null : false)}>
+                  Cancel
+                </button>
+              )}
+              <button
+                className="app-dialog-btn primary"
+                autoFocus={appDialog.type !== 'prompt'}
+                onClick={() => {
+                  if (appDialog.type === 'prompt') {
+                    const input = document.getElementById('app-dialog-input')
+                    closeDialog(input ? input.value : '')
+                  } else {
+                    closeDialog(appDialog.type === 'confirm' ? true : undefined)
+                  }
+                }}
+              >
+                OK
+              </button>
             </div>
           </div>
         </div>

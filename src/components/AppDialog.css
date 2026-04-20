@@ -1,0 +1,78 @@
+.app-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.app-dialog {
+  background: #121c2d;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 24px 28px 20px;
+  max-width: 380px;
+  width: 90%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.app-dialog-message {
+  color: #e2e8f0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.app-dialog-input {
+  background: #0d1520;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: 14px;
+  padding: 9px 12px;
+  width: 100%;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.app-dialog-input:focus {
+  border-color: rgba(100, 180, 255, 0.5);
+}
+
+.app-dialog-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.app-dialog-btn {
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 20px;
+  transition: opacity 0.15s;
+}
+
+.app-dialog-btn:active {
+  opacity: 0.75;
+}
+
+.app-dialog-btn.primary {
+  background: #2563eb;
+  color: #fff;
+}
+
+.app-dialog-btn.secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+}
