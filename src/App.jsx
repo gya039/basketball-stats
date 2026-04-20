@@ -1674,25 +1674,26 @@ export default function App() {
     }
   }, [currentMatch, currentMatchId])
 
-  // Enter fullscreen on live screen to hide Android nav bar and address bar
+  // Always-on fullscreen for Android tablets only (Acer). iPad and desktop are excluded.
   useEffect(() => {
+    if (!/Android/i.test(navigator.userAgent)) return
     const el = document.documentElement
-    if (screen === 'live') {
-      const requestFS =
+    const requestFS = () => {
+      const fn =
         el.requestFullscreen ||
         el.webkitRequestFullscreen ||
         el.mozRequestFullScreen ||
         el.msRequestFullscreen
-      if (requestFS) requestFS.call(el).catch(() => {})
-    } else {
-      const exitFS =
-        document.exitFullscreen ||
-        document.webkitExitFullscreen ||
-        document.mozCancelFullScreen ||
-        document.msExitFullscreen
-      if (exitFS && document.fullscreenElement) exitFS.call(document).catch(() => {})
+      if (fn && !document.fullscreenElement) fn.call(el).catch(() => {})
     }
-  }, [screen])
+    requestFS()
+    document.addEventListener('click', requestFS, true)
+    document.addEventListener('touchend', requestFS, true)
+    return () => {
+      document.removeEventListener('click', requestFS, true)
+      document.removeEventListener('touchend', requestFS, true)
+    }
+  }, [])
 
   // Watch online/offline transitions and update the indicator + reconnect-sync flag
   useEffect(() => {

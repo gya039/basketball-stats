@@ -52,7 +52,7 @@ function getMissHeatColor(intensity) {
 }
 
 function getHeatCellStyle(cell) {
-  const opacity = Math.min(0.24 + cell.volumeIntensity * 0.76, 0.96)
+  const opacity = Math.min(0.65 + cell.volumeIntensity * 0.35, 1.0)
 
   if (cell.made > 0 && cell.missed > 0) {
     const madeColor = getMadeHeatColor(cell.madeIntensity)

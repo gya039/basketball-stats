@@ -5855,7 +5855,7 @@ button {
   }
 
   .bottom-panel-court {
-    max-height: min(42svh, 230px);
+    max-height: min(68svh, 410px);
   }
 
   .side-staff-btn {
@@ -5891,14 +5891,36 @@ button {
     padding: 1px 3px;
   }
 
+  /* Box score — tighten columns so all 15 fit without clipping */
+  .wide-boxscore {
+    grid-template-columns: 32px minmax(90px, 2fr) repeat(13, minmax(44px, 1fr));
+  }
+
+  .boxscore-head {
+    font-size: 10px;
+    padding-bottom: 6px;
+  }
+
+  .boxscore-row > div {
+    font-size: 11px;
+    padding: 7px 3px;
+    min-height: 36px;
+  }
+
+  .boxscore-team h3 {
+    font-size: 14px;
+    margin: 0 0 6px;
+  }
+
   /* Shot map drawer — override higher-specificity rules so it fits on Acer */
   .bottom-panel-court.shot-map-drawer,
   .bottom-panel-court.shot-map-drawer.player-heatmap-drawer,
   .bottom-panel-court.shot-map-drawer.team-heatmap-drawer {
-    max-height: min(54svh, 310px);
-    width: min(94vw, 660px);
-    padding: 6px 8px 6px;
-    overflow: hidden;
+    max-height: min(68svh, 400px);
+    width: min(94vw, 680px);
+    padding: 6px 8px 8px;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 
   .bottom-panel-court.shot-map-drawer .drawer-header.drawer-header-shots {
@@ -5906,30 +5928,51 @@ button {
     padding-bottom: 0;
   }
 
+  /* Pair grid: both team courts side by side — override the max-width:1100px single-column rule */
   .shot-map-pair-grid {
-    gap: 6px;
-    align-items: center;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    align-items: start;
   }
 
-  /* Constrain each half-court so both fit side by side without scrolling */
-  .player-heatmap-drawer .shot-map-court.folded-half-court,
-  .team-heatmap-drawer .shot-map-court.folded-half-court {
-    max-height: 170px;
+  /* Pair grid courts: cap panel width so aspect-ratio gives a tall natural court */
+  .shot-map-pair-grid .shot-map-panel {
+    max-width: 260px;
+    margin-inline: auto;
+  }
+
+  /* Remove legend in pair view to give courts more room */
+  .shot-map-pair-grid .shot-map-legend {
+    display: none;
+  }
+
+  .shot-map-drawer .shot-map-title {
+    font-size: 12px;
+    margin: 0 0 4px;
+    text-align: center;
+  }
+
+  .shot-map-drawer .shot-map-wrap {
+    padding-top: 0;
+  }
+
+  /* Player/team single-court heatmap — constrain width so aspect-ratio gives natural height */
+  .player-heatmap-drawer .shot-map-panel,
+  .team-heatmap-drawer .shot-map-panel {
+    max-width: 300px;
+    margin-inline: auto;
   }
 
   .player-heatmap-drawer .shot-map-title,
   .team-heatmap-drawer .shot-map-title {
-    font-size: 10px;
-    margin: 0 0 2px;
+    font-size: 12px;
+    margin: 0 0 4px;
+    text-align: center;
   }
 
   .player-heatmap-drawer .shot-map-wrap,
   .team-heatmap-drawer .shot-map-wrap {
     padding-top: 0;
-  }
-
-  .player-heatmap-drawer .shot-map-panel,
-  .team-heatmap-drawer .shot-map-panel {
-    max-width: 100%;
   }
 }
